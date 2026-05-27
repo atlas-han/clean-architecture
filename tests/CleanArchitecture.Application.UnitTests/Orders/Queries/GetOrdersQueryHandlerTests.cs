@@ -1,0 +1,135 @@
+using System;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using AutoMapper;
+using CleanArchitecture.Application.Common.Mappings;
+using CleanArchitecture.Application.Orders.Queries.GetOrders;
+using CleanArchitecture.Application.UnitTests.TestDoubles;
+using CleanArchitecture.Domain.Entities;
+using Xunit;
+
+namespace CleanArchitecture.Application.UnitTests.Orders.Queries
+{
+    public class GetOrdersQueryHandlerTests
+    {
+        private readonly IMapper _mapper;
+
+        public GetOrdersQueryHandlerTests()
+        {
+            var config = new MapperConfiguration(cfg => cfg.AddProfile<MappingProfile>());
+            _mapper = config.CreateMapper();
+        }
+
+        private static Order MakeOrder(string customer, DateTime createdAt)
+        {
+            var order = new Order(customer, new[]
+            {
+                new OrderItem(Guid.NewGuid(), "Item", 10m, 1)
+            });
+            order.MarkCreated(createdAt);
+            return order;
+        }
+
+        [Fact]
+        public async Task Handle_EmptyStore_ReturnsEmptyList()
+        {
+            using var ctx = TestDbContextFactory.Create();
+            var handler = new GetOrdersQueryHandler(ctx, _mapper);
+
+            var result = await handler.Handle(new GetOrdersQuery(), CancellationToken.None);
+
+            Assert.Empty(result);
+        }
+
+        [Fact]
+        public async Task Handle_ReturnsItemsOrderedByCreatedAtDescending()
+        {
+            using var ctx = TestDbContextFactory.Create();
+            var older = MakeOrder("Older", new DateTime(2025, 1, 1, 0, 0, 0, DateTimeKind.Utc));
+            var newer = MakeOrder("Newer", new DateTime(2025, 6, 1, 0, 0, 0, DateTimeKind.Utc));
+            ctx.Orders.Add(older);
+            ctx.Orders.Add(newer);
+            await ctx.SaveChangesAsync(CancellationToken.None);
+
+            var handler = new GetOrdersQueryHandler(ctx, _mapper);
+
+            var result = await handler.Handle(new GetOrdersQuery(), CancellationToken.None);
+
+            Assert.Equal(2, result.Count);
+            Assert.Equal("Newer", result[0].CustomerName);
+            Assert.Equal("Older", result[1].CustomerName);
+        }
+
+        [Fact]
+        public async Task Handle_MapsItemsAndTotalAmount()
+        {
+            using var ctx = TestDbContextFactory.Create();
+            var order = new Order("Alice", new[]
+            {
+                new OrderItem(Guid.NewGuid(), "A", 50m, 2),
+                new OrderItem(Guid.NewGuid(), "B", 10m, 3)
+            });
+            ctx.Orders.Add(order);
+            await ctx.SaveChangesAsync(CancellationToken.None);
+
+            var handler = new GetOrdersQueryHandler(ctx, _mapper);
+
+            var result = await handler.Handle(new GetOrdersQuery(), CancellationToken.None);
+
+            var dto = Assert.Single(result);
+            Assert.Equal(2, dto.Items.Count);
+            Assert.Equal(130m, dto.TotalAmount);
+        }
+
+        [Fact]
+        public async Task Handle_PageZero_IsClampedToFirstPage()
+        {
+            using var ctx = TestDbContextFactory.Create();
+            ctx.Orders.Add(MakeOrder("Only", new DateTime(2025, 1, 1, 0, 0, 0, DateTimeKind.Utc)));
+            await ctx.SaveChangesAsync(CancellationToken.None);
+
+            var handler = new GetOrdersQueryHandler(ctx, _mapper);
+
+            var result = await handler.Handle(new GetOrdersQuery(Page: 0, PageSize: 10), CancellationToken.None);
+
+            Assert.Single(result);
+        }
+
+        [Fact]
+        public async Task Handle_PageSizeOverMax_IsClampedToHundred()
+        {
+            using var ctx = TestDbContextFactory.Create();
+            for (var i = 0; i < 5; i++)
+            {
+                ctx.Orders.Add(MakeOrder("C" + i, new DateTime(2025, 1, 1, 0, 0, 0, DateTimeKind.Utc).AddDays(i)));
+            }
+            await ctx.SaveChangesAsync(CancellationToken.None);
+
+            var handler = new GetOrdersQueryHandler(ctx, _mapper);
+
+            var result = await handler.Handle(new GetOrdersQuery(Page: 1, PageSize: 500), CancellationToken.None);
+
+            Assert.Equal(5, result.Count);
+        }
+
+        [Fact]
+        public async Task Handle_RespectsPageSize()
+        {
+            using var ctx = TestDbContextFactory.Create();
+            for (var i = 0; i < 5; i++)
+            {
+                ctx.Orders.Add(MakeOrder("C" + i, new DateTime(2025, 1, 1, 0, 0, 0, DateTimeKind.Utc).AddDays(i)));
+            }
+            await ctx.SaveChangesAsync(CancellationToken.None);
+
+            var handler = new GetOrdersQueryHandler(ctx, _mapper);
+
+            var result = await handler.Handle(new GetOrdersQuery(Page: 1, PageSize: 2), CancellationToken.None);
+
+            Assert.Equal(2, result.Count);
+            Assert.Equal("C4", result[0].CustomerName);
+            Assert.Equal("C3", result[1].CustomerName);
+        }
+    }
+}

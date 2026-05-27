@@ -1,0 +1,24 @@
+# Build output
+[Bb]in/
+[Oo]bj/
+[Oo]ut/
+*.user
+*.userosscache
+*.suo
+*.lock.json
+*.sln.DotSettings.user
+
+# Rider / VS
+.idea/
+.vs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local settings (machine-specific, never commit)
+appsettings.Local.json
+appsettings.*.Local.json
+
+# Claude Code worktrees (managed by harness — never commit)
+.claude/worktrees/
