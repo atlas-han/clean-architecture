@@ -1,6 +1,5 @@
 using CleanArchitecture.Application.Common.Messaging;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.DependencyInjection;
 
 namespace CleanArchitecture.Api.Controllers
 {
@@ -8,9 +7,11 @@ namespace CleanArchitecture.Api.Controllers
     [Route("api/[controller]")]
     public abstract class ApiControllerBase : ControllerBase
     {
-        private ISender? _sender;
+        protected ISender Sender { get; }
 
-        protected ISender Sender =>
-            _sender ??= HttpContext.RequestServices.GetRequiredService<ISender>();
+        protected ApiControllerBase(ISender sender)
+        {
+            Sender = sender;
+        }
     }
 }

@@ -1,5 +1,6 @@
 using System;
 using System.Threading.Tasks;
+using CleanArchitecture.Application.Common.Messaging;
 using CleanArchitecture.Application.Common.Models;
 using CleanArchitecture.Application.Orders.Commands.CancelOrder;
 using CleanArchitecture.Application.Orders.Commands.CreateOrder;
@@ -13,6 +14,10 @@ namespace CleanArchitecture.Api.Controllers
 {
     public class OrdersController : ApiControllerBase
     {
+        public OrdersController(ISender sender) : base(sender)
+        {
+        }
+
         [HttpGet]
         public async Task<ActionResult<PagedResult<OrderDto>>> GetAll(
             [FromQuery] int page = 1,

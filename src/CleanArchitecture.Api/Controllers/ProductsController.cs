@@ -1,5 +1,6 @@
 using System;
 using System.Threading.Tasks;
+using CleanArchitecture.Application.Common.Messaging;
 using CleanArchitecture.Application.Common.Models;
 using CleanArchitecture.Application.Products.Commands.CreateProduct;
 using CleanArchitecture.Application.Products.Commands.DeleteProduct;
@@ -14,6 +15,10 @@ namespace CleanArchitecture.Api.Controllers
 {
     public class ProductsController : ApiControllerBase
     {
+        public ProductsController(ISender sender) : base(sender)
+        {
+        }
+
         [HttpGet]
         public async Task<ActionResult<PagedResult<ProductDto>>> GetAll(
             [FromQuery] int page = 1,
