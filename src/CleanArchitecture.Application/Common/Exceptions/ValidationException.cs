@@ -8,7 +8,7 @@ namespace CleanArchitecture.Application.Common.Exceptions
     {
         public IDictionary<string, string[]> Errors { get; }
 
-        public ValidationException()
+        private ValidationException()
             : base("One or more validation failures have occurred.")
         {
             Errors = new Dictionary<string, string[]>();

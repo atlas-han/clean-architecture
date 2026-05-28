@@ -22,8 +22,7 @@ namespace CleanArchitecture.Application.Common.Messaging
 
         public async Task<TResponse> Send<TResponse>(IRequest<TResponse> request, CancellationToken cancellationToken = default)
         {
-            if (request is null)
-                throw new ArgumentNullException(nameof(request));
+            ArgumentNullException.ThrowIfNull(request);
 
             await ValidateAsync(request, cancellationToken);
 
@@ -38,8 +37,7 @@ namespace CleanArchitecture.Application.Common.Messaging
 
         public async Task Send(IRequest request, CancellationToken cancellationToken = default)
         {
-            if (request is null)
-                throw new ArgumentNullException(nameof(request));
+            ArgumentNullException.ThrowIfNull(request);
 
             await ValidateAsync(request, cancellationToken);
 
@@ -56,7 +54,7 @@ namespace CleanArchitecture.Application.Common.Messaging
         {
             try
             {
-                return method.Invoke(handler, new object[] { request, cancellationToken })!;
+                return method.Invoke(handler, new[] { request, cancellationToken })!;
             }
             catch (TargetInvocationException ex) when (ex.InnerException is not null)
             {
@@ -80,11 +78,11 @@ namespace CleanArchitecture.Application.Common.Messaging
                 validatorList.Select(v => v.ValidateAsync(context, cancellationToken)));
 
             var failures = results
-                .Where(r => r.Errors.Any())
+                .Where(r => r.Errors.Count != 0)
                 .SelectMany(r => r.Errors)
                 .ToList();
 
-            if (failures.Any())
+            if (failures.Count != 0)
                 throw new ValidationException(failures);
         }
     }
