@@ -5,9 +5,7 @@ using System.Reflection;
 using System.Runtime.ExceptionServices;
 using System.Threading;
 using System.Threading.Tasks;
-using FluentValidation;
 using Microsoft.Extensions.DependencyInjection;
-using ValidationException = CleanArchitecture.Application.Common.Exceptions.ValidationException;
 
 namespace CleanArchitecture.Application.Common.Messaging
 {
@@ -24,66 +22,71 @@ namespace CleanArchitecture.Application.Common.Messaging
         {
             ArgumentNullException.ThrowIfNull(request);
 
-            await ValidateAsync(request, cancellationToken);
-
             var requestType = request.GetType();
             var handlerType = typeof(IRequestHandler<,>).MakeGenericType(requestType, typeof(TResponse));
             var handler = _serviceProvider.GetRequiredService(handlerType);
+            var handlerMethod = handlerType.GetMethod(nameof(IRequestHandler<IRequest<TResponse>, TResponse>.Handle))!;
 
-            var method = handlerType.GetMethod(nameof(IRequestHandler<IRequest<TResponse>, TResponse>.Handle))!;
-            var task = (Task<TResponse>)InvokeHandler(method, handler, request, cancellationToken);
-            return await task;
+            RequestHandlerDelegate<TResponse> pipeline = () =>
+                (Task<TResponse>)InvokeMethod(handlerMethod, handler, new object[] { request, cancellationToken });
+
+            var behaviorType = typeof(IPipelineBehavior<,>).MakeGenericType(requestType, typeof(TResponse));
+            var behaviors = ((IEnumerable<object>)_serviceProvider.GetServices(behaviorType))
+                .Reverse()
+                .ToList();
+            var behaviorMethod = behaviorType.GetMethod(nameof(IPipelineBehavior<IRequest<TResponse>, TResponse>.Handle))!;
+
+            foreach (var behavior in behaviors)
+            {
+                var next = pipeline;
+                var current = behavior;
+                pipeline = () =>
+                    (Task<TResponse>)InvokeMethod(behaviorMethod, current, new object[] { request, next, cancellationToken });
+            }
+
+            return await pipeline();
         }
 
         public async Task Send(IRequest request, CancellationToken cancellationToken = default)
         {
             ArgumentNullException.ThrowIfNull(request);
 
-            await ValidateAsync(request, cancellationToken);
-
             var requestType = request.GetType();
             var handlerType = typeof(IRequestHandler<>).MakeGenericType(requestType);
             var handler = _serviceProvider.GetRequiredService(handlerType);
+            var handlerMethod = handlerType.GetMethod(nameof(IRequestHandler<IRequest>.Handle))!;
 
-            var method = handlerType.GetMethod(nameof(IRequestHandler<IRequest>.Handle))!;
-            var task = (Task)InvokeHandler(method, handler, request, cancellationToken);
-            await task;
+            RequestHandlerDelegate pipeline = () =>
+                (Task)InvokeMethod(handlerMethod, handler, new object[] { request, cancellationToken });
+
+            var behaviorType = typeof(IPipelineBehavior<>).MakeGenericType(requestType);
+            var behaviors = ((IEnumerable<object>)_serviceProvider.GetServices(behaviorType))
+                .Reverse()
+                .ToList();
+            var behaviorMethod = behaviorType.GetMethod(nameof(IPipelineBehavior<IRequest>.Handle))!;
+
+            foreach (var behavior in behaviors)
+            {
+                var next = pipeline;
+                var current = behavior;
+                pipeline = () =>
+                    (Task)InvokeMethod(behaviorMethod, current, new object[] { request, next, cancellationToken });
+            }
+
+            await pipeline();
         }
 
-        private static object InvokeHandler(MethodInfo method, object handler, object request, CancellationToken cancellationToken)
+        private static object InvokeMethod(MethodInfo method, object target, object[] args)
         {
             try
             {
-                return method.Invoke(handler, new[] { request, cancellationToken })!;
+                return method.Invoke(target, args)!;
             }
             catch (TargetInvocationException ex) when (ex.InnerException is not null)
             {
                 ExceptionDispatchInfo.Capture(ex.InnerException).Throw();
                 throw;
             }
-        }
-
-        private async Task ValidateAsync(object request, CancellationToken cancellationToken)
-        {
-            var validatorType = typeof(IValidator<>).MakeGenericType(request.GetType());
-            var validators = (IEnumerable<IValidator>)_serviceProvider.GetServices(validatorType);
-
-            var validatorList = validators.ToList();
-            if (validatorList.Count == 0)
-                return;
-
-            var context = new ValidationContext<object>(request);
-
-            var results = await Task.WhenAll(
-                validatorList.Select(v => v.ValidateAsync(context, cancellationToken)));
-
-            var failures = results
-                .Where(r => r.Errors.Count != 0)
-                .SelectMany(r => r.Errors)
-                .ToList();
-
-            if (failures.Count != 0)
-                throw new ValidationException(failures);
         }
     }
 }

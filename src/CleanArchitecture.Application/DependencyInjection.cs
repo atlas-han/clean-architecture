@@ -1,5 +1,6 @@
 using System.Linq;
 using System.Reflection;
+using CleanArchitecture.Application.Common.Behaviors;
 using CleanArchitecture.Application.Common.Messaging;
 using FluentValidation;
 using Microsoft.Extensions.DependencyInjection;
@@ -16,6 +17,8 @@ namespace CleanArchitecture.Application
             services.AddValidatorsFromAssembly(assembly);
 
             services.AddScoped<ISender, Sender>();
+            services.AddTransient(typeof(IPipelineBehavior<,>), typeof(ValidationBehavior<,>));
+            services.AddTransient(typeof(IPipelineBehavior<>), typeof(ValidationBehavior<>));
             RegisterHandlers(services, assembly);
 
             return services;
