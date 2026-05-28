@@ -141,7 +141,7 @@ namespace CleanArchitecture.Api.Middleware
                     }
                 }
             }
-            return Guid.NewGuid().ToString("N");
+            return Guid.CreateVersion7().ToString("N");
         }
 
         private static string ResolveTraceId(HttpContext context)
