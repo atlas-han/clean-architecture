@@ -14,14 +14,26 @@ namespace CleanArchitecture.Infrastructure
             this IServiceCollection services,
             IConfiguration configuration)
         {
-            // The InMemory provider treats BeginTransaction/Commit as no-ops, so
-            // BeginTransactionAsync gives no real atomicity here — it would throw without
-            // this suppression. The transactional handler's rollback guarantee only holds
-            // against a relational provider (SQL Server, PostgreSQL, etc.).
-            services.AddDbContext<ApplicationDbContext>(options =>
-                options
-                    .UseInMemoryDatabase("CleanArchitectureDb")
-                    .ConfigureWarnings(w => w.Ignore(InMemoryEventId.TransactionIgnoredWarning)));
+            var connectionString = configuration.GetConnectionString("DefaultConnection");
+
+            if (string.IsNullOrWhiteSpace(connectionString))
+            {
+                // No connection string configured → fall back to InMemory so dev/test
+                // environments (and the WebApplicationFactory-based integration tests)
+                // keep working without a real SQL Server. The InMemory provider treats
+                // BeginTransaction/Commit as no-ops, so BeginTransactionAsync would
+                // otherwise throw — suppress that warning here. The transactional
+                // handler's rollback guarantee only holds against a relational provider.
+                services.AddDbContext<ApplicationDbContext>(options =>
+                    options
+                        .UseInMemoryDatabase("CleanArchitectureDb")
+                        .ConfigureWarnings(w => w.Ignore(InMemoryEventId.TransactionIgnoredWarning)));
+            }
+            else
+            {
+                services.AddDbContext<ApplicationDbContext>(options =>
+                    options.UseSqlServer(connectionString));
+            }
 
             services.AddScoped<IApplicationDbContext>(provider =>
                 provider.GetRequiredService<ApplicationDbContext>());
