@@ -3,7 +3,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using CleanArchitecture.Application.Common.Interfaces;
 using CleanArchitecture.Domain.Entities;
-using MediatR;
+using CleanArchitecture.Application.Common.Messaging;
 
 namespace CleanArchitecture.Application.Products.Commands.CreateProduct
 {

@@ -7,7 +7,7 @@ using AutoMapper;
 using AutoMapper.QueryableExtensions;
 using CleanArchitecture.Application.Common.Interfaces;
 using CleanArchitecture.Application.Products.Queries.Dtos;
-using MediatR;
+using CleanArchitecture.Application.Common.Messaging;
 using Microsoft.EntityFrameworkCore;
 
 namespace CleanArchitecture.Application.Products.Queries.GetProducts

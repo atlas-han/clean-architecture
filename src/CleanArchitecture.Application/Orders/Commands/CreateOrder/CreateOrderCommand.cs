@@ -1,6 +1,6 @@
 using System;
 using System.Collections.Generic;
-using MediatR;
+using CleanArchitecture.Application.Common.Messaging;
 
 namespace CleanArchitecture.Application.Orders.Commands.CreateOrder
 {

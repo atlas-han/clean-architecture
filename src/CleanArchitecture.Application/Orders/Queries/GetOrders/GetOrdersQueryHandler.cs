@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 using AutoMapper;
 using CleanArchitecture.Application.Common.Interfaces;
 using CleanArchitecture.Application.Orders.Queries.Dtos;
-using MediatR;
+using CleanArchitecture.Application.Common.Messaging;
 using Microsoft.EntityFrameworkCore;
 
 namespace CleanArchitecture.Application.Orders.Queries.GetOrders

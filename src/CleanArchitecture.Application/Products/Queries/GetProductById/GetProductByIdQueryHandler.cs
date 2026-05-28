@@ -7,7 +7,7 @@ using CleanArchitecture.Application.Common.Exceptions;
 using CleanArchitecture.Application.Common.Interfaces;
 using CleanArchitecture.Application.Products.Queries.Dtos;
 using CleanArchitecture.Domain.Entities;
-using MediatR;
+using CleanArchitecture.Application.Common.Messaging;
 using Microsoft.EntityFrameworkCore;
 
 namespace CleanArchitecture.Application.Products.Queries.GetProductById

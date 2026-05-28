@@ -1,5 +1,5 @@
 using System;
-using MediatR;
+using CleanArchitecture.Application.Common.Messaging;
 
 namespace CleanArchitecture.Application.Products.Commands.CreateProduct
 {

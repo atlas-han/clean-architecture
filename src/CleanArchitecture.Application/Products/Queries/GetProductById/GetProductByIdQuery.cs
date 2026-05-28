@@ -1,6 +1,6 @@
 using System;
 using CleanArchitecture.Application.Products.Queries.Dtos;
-using MediatR;
+using CleanArchitecture.Application.Common.Messaging;
 
 namespace CleanArchitecture.Application.Products.Queries.GetProductById
 {

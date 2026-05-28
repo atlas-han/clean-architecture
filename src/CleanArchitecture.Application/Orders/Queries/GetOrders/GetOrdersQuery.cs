@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 using CleanArchitecture.Application.Orders.Queries.Dtos;
-using MediatR;
+using CleanArchitecture.Application.Common.Messaging;
 
 namespace CleanArchitecture.Application.Orders.Queries.GetOrders
 {

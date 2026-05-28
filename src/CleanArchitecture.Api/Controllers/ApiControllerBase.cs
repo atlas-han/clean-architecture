@@ -1,4 +1,4 @@
-using MediatR;
+using CleanArchitecture.Application.Common.Messaging;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -8,9 +8,9 @@ namespace CleanArchitecture.Api.Controllers
     [Route("api/[controller]")]
     public abstract class ApiControllerBase : ControllerBase
     {
-        private IMediator? _mediator;
+        private ISender? _sender;
 
-        protected IMediator Mediator =>
-            _mediator ??= HttpContext.RequestServices.GetRequiredService<IMediator>();
+        protected ISender Sender =>
+            _sender ??= HttpContext.RequestServices.GetRequiredService<ISender>();
     }
 }

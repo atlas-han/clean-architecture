@@ -18,21 +18,21 @@ namespace CleanArchitecture.Api.Controllers
             [FromQuery] int page = 1,
             [FromQuery] int pageSize = 20)
         {
-            var products = await Mediator.Send(new GetProductsQuery(page, pageSize));
+            var products = await Sender.Send(new GetProductsQuery(page, pageSize));
             return Ok(products);
         }
 
         [HttpGet("{id:guid}")]
         public async Task<ActionResult<ProductDto>> GetById(Guid id)
         {
-            var product = await Mediator.Send(new GetProductByIdQuery(id));
+            var product = await Sender.Send(new GetProductByIdQuery(id));
             return Ok(product);
         }
 
         [HttpPost]
         public async Task<ActionResult<Guid>> Create([FromBody] CreateProductCommand command)
         {
-            var id = await Mediator.Send(command);
+            var id = await Sender.Send(command);
             return CreatedAtAction(nameof(GetById), new { id }, id);
         }
 
@@ -42,14 +42,14 @@ namespace CleanArchitecture.Api.Controllers
             if (id != command.Id)
                 return BadRequest("Route id does not match body id.");
 
-            await Mediator.Send(command);
+            await Sender.Send(command);
             return NoContent();
         }
 
         [HttpDelete("{id:guid}")]
         public async Task<IActionResult> Delete(Guid id)
         {
-            await Mediator.Send(new DeleteProductCommand(id));
+            await Sender.Send(new DeleteProductCommand(id));
             return NoContent();
         }
     }

@@ -18,35 +18,35 @@ namespace CleanArchitecture.Api.Controllers
             [FromQuery] int page = 1,
             [FromQuery] int pageSize = 20)
         {
-            var orders = await Mediator.Send(new GetOrdersQuery(page, pageSize));
+            var orders = await Sender.Send(new GetOrdersQuery(page, pageSize));
             return Ok(orders);
         }
 
         [HttpGet("{id:guid}")]
         public async Task<ActionResult<OrderDto>> GetById(Guid id)
         {
-            var order = await Mediator.Send(new GetOrderByIdQuery(id));
+            var order = await Sender.Send(new GetOrderByIdQuery(id));
             return Ok(order);
         }
 
         [HttpPost]
         public async Task<ActionResult<Guid>> Create([FromBody] CreateOrderCommand command)
         {
-            var id = await Mediator.Send(command);
+            var id = await Sender.Send(command);
             return CreatedAtAction(nameof(GetById), new { id }, id);
         }
 
         [HttpPost("place")]
         public async Task<ActionResult<Guid>> Place([FromBody] PlaceOrderCommand command)
         {
-            var id = await Mediator.Send(command);
+            var id = await Sender.Send(command);
             return CreatedAtAction(nameof(GetById), new { id }, id);
         }
 
         [HttpPost("{id:guid}/cancel")]
         public async Task<IActionResult> Cancel(Guid id)
         {
-            await Mediator.Send(new CancelOrderCommand(id));
+            await Sender.Send(new CancelOrderCommand(id));
             return NoContent();
         }
     }
