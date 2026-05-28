@@ -19,6 +19,15 @@ namespace CleanArchitecture.Application.Orders.Commands.PlaceOrder
             _context = context;
         }
 
+        // Intentional demo of the "multiple SaveChanges + explicit transaction" pattern,
+        // kept as a counterpart to CreateOrderCommandHandler's single-SaveChanges path.
+        // Functionally a single SaveChangesAsync would persist the stock decrements and
+        // the new Order atomically via EF Core's implicit transaction, so the explicit
+        // BeginTransactionAsync below is not strictly required for the current logic.
+        // It is preserved to illustrate how to wrap several SaveChanges calls in one
+        // atomic unit — useful when work needs to happen between writes (e.g. reading
+        // a generated key, calling another aggregate, publishing an event) while still
+        // rolling back every table together on failure.
         public async Task<Guid> Handle(PlaceOrderCommand request, CancellationToken cancellationToken)
         {
             await using var transaction = await _context.BeginTransactionAsync(cancellationToken);
