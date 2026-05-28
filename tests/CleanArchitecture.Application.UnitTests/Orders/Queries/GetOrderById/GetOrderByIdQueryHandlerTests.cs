@@ -7,6 +7,7 @@ using CleanArchitecture.Application.Common.Mappings;
 using CleanArchitecture.Application.Orders.Queries.GetOrderById;
 using CleanArchitecture.Application.UnitTests.TestDoubles;
 using CleanArchitecture.Domain.Entities;
+using CleanArchitecture.Domain.ValueObjects;
 using Xunit;
 
 namespace CleanArchitecture.Application.UnitTests.Orders.Queries.GetOrderById
@@ -27,8 +28,8 @@ namespace CleanArchitecture.Application.UnitTests.Orders.Queries.GetOrderById
             using var ctx = TestDbContextFactory.Create();
             var order = new Order("Alice", new[]
             {
-                new OrderItem(Guid.NewGuid(), "Mouse", 30m, 2),
-                new OrderItem(Guid.NewGuid(), "Pad", 10m, 1)
+                new OrderItem(Guid.NewGuid(), "Mouse", new Money(30m), 2),
+                new OrderItem(Guid.NewGuid(), "Pad", new Money(10m), 1)
             });
             ctx.Orders.Add(order);
             await ctx.SaveChangesAsync(CancellationToken.None);
@@ -40,7 +41,7 @@ namespace CleanArchitecture.Application.UnitTests.Orders.Queries.GetOrderById
             Assert.Equal(order.Id, dto.Id);
             Assert.Equal("Alice", dto.CustomerName);
             Assert.Equal(2, dto.Items.Count);
-            Assert.Equal(70m, dto.TotalAmount);
+            Assert.Equal(70m, dto.TotalAmount); // DTO still exposes decimal
         }
 
         [Fact]

@@ -2,6 +2,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using CleanArchitecture.Application.Common.Interfaces;
 using CleanArchitecture.Domain.Entities;
+using CleanArchitecture.Domain.ValueObjects;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 
@@ -21,6 +22,13 @@ namespace CleanArchitecture.Application.UnitTests.TestDoubles
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
+            modelBuilder.Entity<Product>(b =>
+            {
+                b.HasKey(p => p.Id);
+                b.Property(p => p.Price)
+                    .HasConversion(money => money.Amount, value => new Money(value));
+            });
+
             modelBuilder.Entity<Order>(b =>
             {
                 b.HasKey(o => o.Id);
@@ -36,6 +44,8 @@ namespace CleanArchitecture.Application.UnitTests.TestDoubles
             modelBuilder.Entity<OrderItem>(b =>
             {
                 b.HasKey(i => i.Id);
+                b.Property(i => i.UnitPrice)
+                    .HasConversion(money => money.Amount, value => new Money(value));
                 b.Ignore(i => i.LineTotal);
             });
 

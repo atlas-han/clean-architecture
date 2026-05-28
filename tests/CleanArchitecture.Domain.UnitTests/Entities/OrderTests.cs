@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using CleanArchitecture.Domain.Entities;
 using CleanArchitecture.Domain.Enums;
 using CleanArchitecture.Domain.Exceptions;
+using CleanArchitecture.Domain.ValueObjects;
 using Xunit;
 
 namespace CleanArchitecture.Domain.UnitTests.Entities
@@ -10,7 +11,7 @@ namespace CleanArchitecture.Domain.UnitTests.Entities
     public class OrderTests
     {
         private static OrderItem Item(decimal price = 100m, int qty = 2) =>
-            new OrderItem(Guid.NewGuid(), "Sample", price, qty);
+            new OrderItem(Guid.NewGuid(), "Sample", new Money(price), qty);
 
         [Fact]
         public void Constructor_WithValidArguments_InitializesProperties()
@@ -23,7 +24,7 @@ namespace CleanArchitecture.Domain.UnitTests.Entities
             Assert.Equal("Alice", order.CustomerName);
             Assert.Equal(OrderStatus.Pending, order.Status);
             Assert.Equal(2, order.Items.Count);
-            Assert.Equal(250m, order.TotalAmount);
+            Assert.Equal(new Money(250m), order.TotalAmount);
         }
 
         [Theory]
@@ -66,29 +67,29 @@ namespace CleanArchitecture.Domain.UnitTests.Entities
         public void OrderItem_WithEmptyProductId_Throws()
         {
             Assert.Throws<DomainException>(
-                () => new OrderItem(Guid.Empty, "Product", 10m, 1));
+                () => new OrderItem(Guid.Empty, "Product", new Money(10m), 1));
         }
 
         [Fact]
         public void OrderItem_WithZeroQuantity_Throws()
         {
             Assert.Throws<DomainException>(
-                () => new OrderItem(Guid.NewGuid(), "Product", 10m, 0));
+                () => new OrderItem(Guid.NewGuid(), "Product", new Money(10m), 0));
         }
 
         [Fact]
-        public void OrderItem_WithNegativePrice_Throws()
+        public void OrderItem_WithNullUnitPrice_Throws()
         {
             Assert.Throws<DomainException>(
-                () => new OrderItem(Guid.NewGuid(), "Product", -1m, 1));
+                () => new OrderItem(Guid.NewGuid(), "Product", null!, 1));
         }
 
         [Fact]
         public void OrderItem_LineTotal_IsUnitPriceTimesQuantity()
         {
-            var item = new OrderItem(Guid.NewGuid(), "Product", 12.5m, 4);
+            var item = new OrderItem(Guid.NewGuid(), "Product", new Money(12.5m), 4);
 
-            Assert.Equal(50m, item.LineTotal);
+            Assert.Equal(new Money(50m), item.LineTotal);
         }
 
         [Fact]

@@ -3,6 +3,7 @@ using System.Linq;
 using CleanArchitecture.Domain.Common;
 using CleanArchitecture.Domain.Enums;
 using CleanArchitecture.Domain.Exceptions;
+using CleanArchitecture.Domain.ValueObjects;
 
 namespace CleanArchitecture.Domain.Entities
 {
@@ -15,7 +16,7 @@ namespace CleanArchitecture.Domain.Entities
 
         public IReadOnlyList<OrderItem> Items => _items;
 
-        public decimal TotalAmount => _items.Sum(i => i.LineTotal);
+        public Money TotalAmount => _items.Aggregate(Money.Zero, (sum, i) => sum + i.LineTotal);
 
         private Order() { }
 

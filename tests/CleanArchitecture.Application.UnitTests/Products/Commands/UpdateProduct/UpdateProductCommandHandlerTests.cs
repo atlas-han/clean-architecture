@@ -6,6 +6,7 @@ using CleanArchitecture.Application.Products.Commands.UpdateProduct;
 using CleanArchitecture.Application.UnitTests.TestDoubles;
 using CleanArchitecture.Domain.Entities;
 using CleanArchitecture.Domain.Exceptions;
+using CleanArchitecture.Domain.ValueObjects;
 using Xunit;
 
 namespace CleanArchitecture.Application.UnitTests.Products.Commands.UpdateProduct
@@ -27,7 +28,7 @@ namespace CleanArchitecture.Application.UnitTests.Products.Commands.UpdateProduc
         public async Task Handle_ExistingProduct_AppliesChanges()
         {
             using var ctx = TestDbContextFactory.Create();
-            var product = new Product("Old", "od", 100m, 10);
+            var product = new Product("Old", "od", new Money(100m), 10);
             ctx.Products.Add(product);
             await ctx.SaveChangesAsync(CancellationToken.None);
 
@@ -40,7 +41,7 @@ namespace CleanArchitecture.Application.UnitTests.Products.Commands.UpdateProduc
             Assert.NotNull(updated);
             Assert.Equal("New", updated!.Name);
             Assert.Equal("nd", updated.Description);
-            Assert.Equal(200m, updated.Price);
+            Assert.Equal(new Money(200m), updated.Price);
             Assert.Equal(20, updated.Stock);
         }
 
@@ -48,7 +49,7 @@ namespace CleanArchitecture.Application.UnitTests.Products.Commands.UpdateProduc
         public async Task Handle_InvalidDomainState_PropagatesDomainException()
         {
             using var ctx = TestDbContextFactory.Create();
-            var product = new Product("name", "desc", 100m, 10);
+            var product = new Product("name", "desc", new Money(100m), 10);
             ctx.Products.Add(product);
             await ctx.SaveChangesAsync(CancellationToken.None);
 

@@ -2,8 +2,9 @@ using System.Threading;
 using System.Threading.Tasks;
 using CleanArchitecture.Application.Common.Exceptions;
 using CleanArchitecture.Application.Common.Interfaces;
-using CleanArchitecture.Domain.Entities;
 using CleanArchitecture.Application.Common.Messaging;
+using CleanArchitecture.Domain.Entities;
+using CleanArchitecture.Domain.ValueObjects;
 
 namespace CleanArchitecture.Application.Products.Commands.UpdateProduct
 {
@@ -25,7 +26,7 @@ namespace CleanArchitecture.Application.Products.Commands.UpdateProduct
 
             product.Rename(request.Name);
             product.ChangeDescription(request.Description);
-            product.ChangePrice(request.Price);
+            product.ChangePrice(new Money(request.Price));
             product.AdjustStock(request.Stock);
 
             await _context.SaveChangesAsync(cancellationToken);

@@ -2,8 +2,9 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using CleanArchitecture.Application.Common.Interfaces;
-using CleanArchitecture.Domain.Entities;
 using CleanArchitecture.Application.Common.Messaging;
+using CleanArchitecture.Domain.Entities;
+using CleanArchitecture.Domain.ValueObjects;
 
 namespace CleanArchitecture.Application.Products.Commands.CreateProduct
 {
@@ -21,7 +22,7 @@ namespace CleanArchitecture.Application.Products.Commands.CreateProduct
             var product = new Product(
                 request.Name,
                 request.Description,
-                request.Price,
+                new Money(request.Price),
                 request.Stock);
 
             _context.Products.Add(product);

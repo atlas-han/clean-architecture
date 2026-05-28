@@ -6,6 +6,7 @@ using CleanArchitecture.Application.Common.Mappings;
 using CleanArchitecture.Application.Orders.Queries.GetOrders;
 using CleanArchitecture.Application.UnitTests.TestDoubles;
 using CleanArchitecture.Domain.Entities;
+using CleanArchitecture.Domain.ValueObjects;
 using Xunit;
 
 namespace CleanArchitecture.Application.UnitTests.Orders.Queries.GetOrders
@@ -24,7 +25,7 @@ namespace CleanArchitecture.Application.UnitTests.Orders.Queries.GetOrders
         {
             var order = new Order(customer, new[]
             {
-                new OrderItem(Guid.NewGuid(), "Item", 10m, 1)
+                new OrderItem(Guid.NewGuid(), "Item", new Money(10m), 1)
             });
             order.MarkCreated(createdAt);
             return order;
@@ -71,8 +72,8 @@ namespace CleanArchitecture.Application.UnitTests.Orders.Queries.GetOrders
             using var ctx = TestDbContextFactory.Create();
             var order = new Order("Alice", new[]
             {
-                new OrderItem(Guid.NewGuid(), "A", 50m, 2),
-                new OrderItem(Guid.NewGuid(), "B", 10m, 3)
+                new OrderItem(Guid.NewGuid(), "A", new Money(50m), 2),
+                new OrderItem(Guid.NewGuid(), "B", new Money(10m), 3)
             });
             ctx.Orders.Add(order);
             await ctx.SaveChangesAsync(CancellationToken.None);

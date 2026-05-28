@@ -1,5 +1,6 @@
 using CleanArchitecture.Domain.Common;
 using CleanArchitecture.Domain.Exceptions;
+using CleanArchitecture.Domain.ValueObjects;
 
 namespace CleanArchitecture.Domain.Entities
 {
@@ -7,12 +8,12 @@ namespace CleanArchitecture.Domain.Entities
     {
         public string Name { get; private set; } = string.Empty;
         public string Description { get; private set; } = string.Empty;
-        public decimal Price { get; private set; }
+        public Money Price { get; private set; } = Money.Zero;
         public int Stock { get; private set; }
 
         private Product() { }
 
-        public Product(string name, string description, decimal price, int stock)
+        public Product(string name, string description, Money price, int stock)
         {
             Rename(name);
             ChangeDescription(description);
@@ -34,10 +35,10 @@ namespace CleanArchitecture.Domain.Entities
             Description = description ?? string.Empty;
         }
 
-        public void ChangePrice(decimal price)
+        public void ChangePrice(Money price)
         {
-            if (price < 0)
-                throw new DomainException("Price must not be negative.");
+            if (price is null)
+                throw new DomainException("Price must not be null.");
             Price = price;
         }
 

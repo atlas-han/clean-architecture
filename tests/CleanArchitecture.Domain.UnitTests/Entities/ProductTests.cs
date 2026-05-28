@@ -1,6 +1,7 @@
 using System;
 using CleanArchitecture.Domain.Entities;
 using CleanArchitecture.Domain.Exceptions;
+using CleanArchitecture.Domain.ValueObjects;
 using Xunit;
 
 namespace CleanArchitecture.Domain.UnitTests.Entities
@@ -10,12 +11,12 @@ namespace CleanArchitecture.Domain.UnitTests.Entities
         [Fact]
         public void Constructor_WithValidArguments_InitializesProperties()
         {
-            var product = new Product("Keyboard", "Mechanical", 129000m, 50);
+            var product = new Product("Keyboard", "Mechanical", new Money(129000m), 50);
 
             Assert.NotEqual(Guid.Empty, product.Id);
             Assert.Equal("Keyboard", product.Name);
             Assert.Equal("Mechanical", product.Description);
-            Assert.Equal(129000m, product.Price);
+            Assert.Equal(new Money(129000m), product.Price);
             Assert.Equal(50, product.Stock);
             Assert.Null(product.UpdatedAt);
         }
@@ -27,7 +28,7 @@ namespace CleanArchitecture.Domain.UnitTests.Entities
         public void Constructor_WithEmptyName_ThrowsDomainException(string? name)
         {
             var ex = Assert.Throws<DomainException>(
-                () => new Product(name!, "desc", 100m, 10));
+                () => new Product(name!, "desc", new Money(100m), 10));
 
             Assert.Contains("must not be empty", ex.Message);
         }
@@ -37,37 +38,37 @@ namespace CleanArchitecture.Domain.UnitTests.Entities
         {
             var longName = new string('a', 201);
             Assert.Throws<DomainException>(
-                () => new Product(longName, "desc", 100m, 10));
+                () => new Product(longName, "desc", new Money(100m), 10));
         }
 
         [Fact]
         public void Constructor_WithNegativePrice_Throws()
         {
             Assert.Throws<DomainException>(
-                () => new Product("name", "desc", -0.01m, 10));
+                () => new Product("name", "desc", new Money(-0.01m), 10));
         }
 
         [Fact]
         public void Constructor_WithNegativeStock_Throws()
         {
             Assert.Throws<DomainException>(
-                () => new Product("name", "desc", 100m, -1));
+                () => new Product("name", "desc", new Money(100m), -1));
         }
 
         [Fact]
         public void ChangePrice_AcceptsZero()
         {
-            var product = new Product("name", "desc", 100m, 10);
+            var product = new Product("name", "desc", new Money(100m), 10);
 
-            product.ChangePrice(0m);
+            product.ChangePrice(Money.Zero);
 
-            Assert.Equal(0m, product.Price);
+            Assert.Equal(Money.Zero, product.Price);
         }
 
         [Fact]
         public void Rename_UpdatesName()
         {
-            var product = new Product("Old", "desc", 100m, 10);
+            var product = new Product("Old", "desc", new Money(100m), 10);
 
             product.Rename("New");
 
@@ -77,7 +78,7 @@ namespace CleanArchitecture.Domain.UnitTests.Entities
         [Fact]
         public void ChangeDescription_TreatsNullAsEmpty()
         {
-            var product = new Product("name", "desc", 100m, 10);
+            var product = new Product("name", "desc", new Money(100m), 10);
 
             product.ChangeDescription(null!);
 
@@ -87,7 +88,7 @@ namespace CleanArchitecture.Domain.UnitTests.Entities
         [Fact]
         public void DecreaseStock_WithValidQuantity_ReducesStock()
         {
-            var product = new Product("name", "desc", 100m, 10);
+            var product = new Product("name", "desc", new Money(100m), 10);
 
             product.DecreaseStock(4);
 
@@ -99,7 +100,7 @@ namespace CleanArchitecture.Domain.UnitTests.Entities
         [InlineData(-1)]
         public void DecreaseStock_WithNonPositiveQuantity_Throws(int quantity)
         {
-            var product = new Product("name", "desc", 100m, 10);
+            var product = new Product("name", "desc", new Money(100m), 10);
 
             Assert.Throws<DomainException>(() => product.DecreaseStock(quantity));
         }
@@ -107,7 +108,7 @@ namespace CleanArchitecture.Domain.UnitTests.Entities
         [Fact]
         public void DecreaseStock_ExceedingAvailableStock_Throws()
         {
-            var product = new Product("name", "desc", 100m, 3);
+            var product = new Product("name", "desc", new Money(100m), 3);
 
             var ex = Assert.Throws<DomainException>(() => product.DecreaseStock(4));
 
@@ -117,7 +118,7 @@ namespace CleanArchitecture.Domain.UnitTests.Entities
         [Fact]
         public void MarkCreated_AndMarkUpdated_SetAuditFields()
         {
-            var product = new Product("name", "desc", 100m, 10);
+            var product = new Product("name", "desc", new Money(100m), 10);
             var created = new DateTime(2025, 1, 1, 0, 0, 0, DateTimeKind.Utc);
             var updated = created.AddHours(1);
 

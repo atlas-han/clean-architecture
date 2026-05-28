@@ -9,6 +9,7 @@ using CleanArchitecture.Application.UnitTests.TestDoubles;
 using CleanArchitecture.Domain.Entities;
 using CleanArchitecture.Domain.Enums;
 using CleanArchitecture.Domain.Exceptions;
+using CleanArchitecture.Domain.ValueObjects;
 using Microsoft.EntityFrameworkCore;
 using Xunit;
 
@@ -20,7 +21,7 @@ namespace CleanArchitecture.Application.UnitTests.Orders.Commands.PlaceOrder
         public async Task Handle_ValidCommand_PersistsOrderAndDecrementsStock()
         {
             using var ctx = TestDbContextFactory.Create();
-            var product = new Product("Mouse", "Wireless", 30m, 100);
+            var product = new Product("Mouse", "Wireless", new Money(30m), 100);
             ctx.Products.Add(product);
             await ctx.SaveChangesAsync(CancellationToken.None);
 
@@ -37,7 +38,7 @@ namespace CleanArchitecture.Application.UnitTests.Orders.Commands.PlaceOrder
             Assert.Equal("Alice", persisted.CustomerName);
             Assert.Equal(OrderStatus.Pending, persisted.Status);
             Assert.Single(persisted.Items);
-            Assert.Equal(90m, persisted.TotalAmount);
+            Assert.Equal(new Money(90m), persisted.TotalAmount);
 
             var reloaded = await ctx.Products.FirstAsync(p => p.Id == product.Id);
             Assert.Equal(97, reloaded.Stock);
@@ -60,7 +61,7 @@ namespace CleanArchitecture.Application.UnitTests.Orders.Commands.PlaceOrder
         public async Task Handle_InsufficientStock_ThrowsDomainException()
         {
             using var ctx = TestDbContextFactory.Create();
-            var product = new Product("Keyboard", "Mech", 129m, 2);
+            var product = new Product("Keyboard", "Mech", new Money(129m), 2);
             ctx.Products.Add(product);
             await ctx.SaveChangesAsync(CancellationToken.None);
 

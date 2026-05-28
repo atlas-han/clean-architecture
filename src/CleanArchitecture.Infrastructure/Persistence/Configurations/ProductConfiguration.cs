@@ -1,4 +1,5 @@
 using CleanArchitecture.Domain.Entities;
+using CleanArchitecture.Domain.ValueObjects;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
@@ -18,6 +19,7 @@ namespace CleanArchitecture.Infrastructure.Persistence.Configurations
                 .HasMaxLength(2000);
 
             builder.Property(p => p.Price)
+                .HasConversion(money => money.Amount, value => new Money(value))
                 .HasPrecision(18, 2);
         }
     }

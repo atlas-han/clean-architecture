@@ -5,6 +5,7 @@ using CleanArchitecture.Application.Common.Exceptions;
 using CleanArchitecture.Application.Products.Commands.DeleteProduct;
 using CleanArchitecture.Application.UnitTests.TestDoubles;
 using CleanArchitecture.Domain.Entities;
+using CleanArchitecture.Domain.ValueObjects;
 using Xunit;
 
 namespace CleanArchitecture.Application.UnitTests.Products.Commands.DeleteProduct
@@ -26,7 +27,7 @@ namespace CleanArchitecture.Application.UnitTests.Products.Commands.DeleteProduc
         public async Task Handle_ExistingProduct_RemovesFromContext()
         {
             using var ctx = TestDbContextFactory.Create();
-            var product = new Product("name", "desc", 100m, 10);
+            var product = new Product("name", "desc", new Money(100m), 10);
             ctx.Products.Add(product);
             await ctx.SaveChangesAsync(CancellationToken.None);
 

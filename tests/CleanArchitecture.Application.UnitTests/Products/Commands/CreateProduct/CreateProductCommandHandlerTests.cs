@@ -3,6 +3,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using CleanArchitecture.Application.Products.Commands.CreateProduct;
 using CleanArchitecture.Application.UnitTests.TestDoubles;
+using CleanArchitecture.Domain.ValueObjects;
 using Xunit;
 
 namespace CleanArchitecture.Application.UnitTests.Products.Commands.CreateProduct
@@ -24,7 +25,7 @@ namespace CleanArchitecture.Application.UnitTests.Products.Commands.CreateProduc
             Assert.NotNull(persisted);
             Assert.Equal("Mouse", persisted!.Name);
             Assert.Equal("Wireless", persisted.Description);
-            Assert.Equal(39000m, persisted.Price);
+            Assert.Equal(new Money(39000m), persisted.Price);
             Assert.Equal(100, persisted.Stock);
         }
     }

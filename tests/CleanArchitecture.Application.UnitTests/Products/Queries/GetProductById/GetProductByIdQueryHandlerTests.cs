@@ -7,6 +7,7 @@ using CleanArchitecture.Application.Common.Mappings;
 using CleanArchitecture.Application.Products.Queries.GetProductById;
 using CleanArchitecture.Application.UnitTests.TestDoubles;
 using CleanArchitecture.Domain.Entities;
+using CleanArchitecture.Domain.ValueObjects;
 using Xunit;
 
 namespace CleanArchitecture.Application.UnitTests.Products.Queries.GetProductById
@@ -25,7 +26,7 @@ namespace CleanArchitecture.Application.UnitTests.Products.Queries.GetProductByI
         public async Task Handle_ExistingId_ReturnsDto()
         {
             using var ctx = TestDbContextFactory.Create();
-            var product = new Product("Item", "desc", 50m, 5);
+            var product = new Product("Item", "desc", new Money(50m), 5);
             ctx.Products.Add(product);
             await ctx.SaveChangesAsync(CancellationToken.None);
 

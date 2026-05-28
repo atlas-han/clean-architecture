@@ -8,6 +8,7 @@ using CleanArchitecture.Application.Orders.Commands.CreateOrder;
 using CleanArchitecture.Application.UnitTests.TestDoubles;
 using CleanArchitecture.Domain.Entities;
 using CleanArchitecture.Domain.Enums;
+using CleanArchitecture.Domain.ValueObjects;
 using Microsoft.EntityFrameworkCore;
 using Xunit;
 
@@ -19,7 +20,7 @@ namespace CleanArchitecture.Application.UnitTests.Orders.Commands.CreateOrder
         public async Task Handle_ValidCommand_PersistsOrderAndReturnsId()
         {
             using var ctx = TestDbContextFactory.Create();
-            var product = new Product("Mouse", "Wireless", 30m, 100);
+            var product = new Product("Mouse", "Wireless", new Money(30m), 100);
             ctx.Products.Add(product);
             await ctx.SaveChangesAsync(CancellationToken.None);
 
@@ -36,7 +37,7 @@ namespace CleanArchitecture.Application.UnitTests.Orders.Commands.CreateOrder
             Assert.Equal("Alice", persisted.CustomerName);
             Assert.Equal(OrderStatus.Pending, persisted.Status);
             Assert.Single(persisted.Items);
-            Assert.Equal(90m, persisted.TotalAmount);
+            Assert.Equal(new Money(90m), persisted.TotalAmount);
         }
 
         [Fact]
@@ -56,7 +57,7 @@ namespace CleanArchitecture.Application.UnitTests.Orders.Commands.CreateOrder
         public async Task Handle_SnapshotsProductNameAndPrice()
         {
             using var ctx = TestDbContextFactory.Create();
-            var product = new Product("Keyboard", "Mech", 129m, 10);
+            var product = new Product("Keyboard", "Mech", new Money(129m), 10);
             ctx.Products.Add(product);
             await ctx.SaveChangesAsync(CancellationToken.None);
 
@@ -70,7 +71,7 @@ namespace CleanArchitecture.Application.UnitTests.Orders.Commands.CreateOrder
             var persisted = await ctx.Orders.Include(o => o.Items).FirstAsync(o => o.Id == id);
             var line = persisted.Items.Single();
             Assert.Equal("Keyboard", line.ProductName);
-            Assert.Equal(129m, line.UnitPrice);
+            Assert.Equal(new Money(129m), line.UnitPrice);
             Assert.Equal(2, line.Quantity);
         }
     }
