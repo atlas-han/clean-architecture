@@ -1,6 +1,8 @@
 using System.Linq;
 using System.Text.Json;
 using CleanArchitecture.Api.Filters;
+using CleanArchitecture.Api.Logging;
+using CleanArchitecture.Api.Middleware;
 using CleanArchitecture.Application;
 using CleanArchitecture.Infrastructure;
 using Microsoft.AspNetCore.Builder;
@@ -9,9 +11,15 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Console;
 using Microsoft.OpenApi.Models;
 
 var builder = WebApplication.CreateBuilder(args);
+
+builder.Logging.ClearProviders();
+builder.Logging.AddConsole(options => options.FormatterName = JsonConsoleFormatter.FormatterName);
+builder.Logging.AddConsoleFormatter<JsonConsoleFormatter, ConsoleFormatterOptions>();
 
 builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
@@ -51,6 +59,9 @@ app.UseSwaggerUI(c =>
 });
 
 app.UseHttpsRedirection();
+
+app.UseMiddleware<RequestLoggingMiddleware>();
+
 app.MapControllers();
 
 app.MapHealthChecks("/health", new HealthCheckOptions
