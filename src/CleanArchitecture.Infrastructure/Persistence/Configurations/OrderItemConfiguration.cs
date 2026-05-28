@@ -8,6 +8,8 @@ namespace CleanArchitecture.Infrastructure.Persistence.Configurations
     {
         public void Configure(EntityTypeBuilder<OrderItem> builder)
         {
+            builder.ToTable("OrderItems");
+
             builder.HasKey(i => i.Id);
 
             builder.Property(i => i.ProductName)
