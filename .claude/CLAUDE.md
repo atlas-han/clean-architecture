@@ -73,7 +73,7 @@ dotnet run --project src/CleanArchitecture.Api                    # 실행 (http
 **모든 코드 수정 작업은 git worktree 안에서 시작합니다.** 이는 협상 가능한 가이드라인이 아니라 하네스의 운영 규칙입니다.
 
 ```
-[plan] → EnterWorktree → [implement (가능하면 team 병렬)] → build + test → 통과시 ExitWorktree(merge) → 실패시 worktree 보존하여 디버그
+[plan] → EnterWorktree → [implement (가능하면 team 병렬)] → build + test → 통과시 rebase + fast-forward 머지(선형 히스토리) → 실패시 worktree 보존하여 디버그
 ```
 
 1. **계획 (in-place)** — 어떤 계층이 닿는지, 무엇이 병렬 가능한지 식별. 읽기/탐색만 필요한 단계에서는 worktree 를 만들지 않습니다.
@@ -82,7 +82,7 @@ dotnet run --project src/CleanArchitecture.Api                    # 실행 (http
 4. **검증** — `dotnet build && dotnet test`. PostToolUse 훅이 포맷팅, PreToolUse 훅이 Domain/Application 가드를 자동 수행합니다.
 
 > **강제**: `.claude/hooks/worktree-isolation-guard.sh` (PreToolUse) 가 `src/`·`tests/` 의 코드 파일(`.cs`/`.csproj`) 및 `.sln` 을 worktree 밖(메인 체크아웃)에서 편집하려는 시도를 차단합니다. 코드 편집은 반드시 `EnterWorktree` 후 worktree 안에서. `.claude/` 설정·문서(`.md`) 편집은 면제되어 in-place 로 가능합니다.
-5. **자동 merge & cleanup** — 빌드 + 테스트 모두 통과시 worktree 안에서 의미 있는 커밋(들) → `ExitWorktree` 로 main(또는 베이스) 에 머지 → worktree 제거. 실패시 worktree 와 브랜치를 *그대로* 두고 사용자에게 실패 요약 보고. 절대 worktree 를 강제 삭제하지 마세요.
+5. **자동 merge & cleanup (선형 히스토리)** — 빌드 + 테스트 모두 통과시 worktree 안에서 의미 있는 커밋(들) 작성 → 같은 worktree 에서 `git rebase main` 으로 베이스 위에 선형화 → `ExitWorktree(action: "keep")` 로 main 체크아웃에 복귀 → `git merge --ff-only <branch>` → `git worktree remove .claude/worktrees/<name>` → `git branch -d <branch>`. **반드시 fast-forward 머지** — `--no-ff` 금지(머지 커밋이 히스토리에 끼면 안 됨). rebase 도중 충돌이 나면 `git rebase --abort` 후 worktree 를 그대로 보존하고 사용자에게 보고. 실패시 worktree 와 브랜치를 *그대로* 두고 사용자에게 실패 요약 보고. 절대 worktree 를 강제 삭제하지 마세요.
 6. **계층 검증** — Domain 이나 csproj 를 건드렸다면 머지 *전* `/check-arch` 로 의존 그래프 재확인.
 
 이 사이클 전체는 `work-orchestrator` 에이전트가 단일 패스로 오케스트레이션합니다(Claude 자율 진행 시). 사용자가 명시적으로 `/harness <목표>` 를 입력하면 같은 사이클을 자율 루프로(첫 GREEN 에서 종료, 실패 시 최대 3 회) 돌립니다. CQRS 슬라이스 추가는 `/add-cqrs` 가 자체적으로 worktree 사이클을 포함합니다.

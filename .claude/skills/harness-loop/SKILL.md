@@ -61,7 +61,19 @@ Compute the verdict:
 | fail | — | — | — | RED |
 | ok | ok | FAIL | — | RED |
 
-On GREEN: commit with a clear message, then `ExitWorktree(action: "merge")`. Done.
+On GREEN: commit with a clear message, then **linear-merge** the worktree (see `worktree-workflow/SKILL.md` "Review + Merge"):
+
+```bash
+# inside the worktree, after committing:
+git rebase main                       # linearize on top of current main
+# then:
+ExitWorktree(action: "keep")          # back to the main checkout
+git merge --ff-only <branch>          # MUST be ff-only — no merge commits
+git worktree remove .claude/worktrees/harness-<topic>
+git branch -d <branch>
+```
+
+`--no-ff` and plain `git merge` are forbidden — they create merge commits and break `git log --graph` linearity. If `--ff-only` is refused (main moved), re-rebase and try again; never fall back to a merge commit. Done.
 
 On RED/YELLOW: capture a **failure summary** (one concrete bullet per failure, with file:line where possible). Pass it as the seed for the next Plan iteration.
 

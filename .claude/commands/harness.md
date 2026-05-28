@@ -50,13 +50,26 @@ Then layered checks (only if the corresponding layer was touched):
 
 | build | tests | arch verdict | review verdict | outcome |
 |-------|-------|--------------|----------------|---------|
-| ok | ok | PASS (or skipped) | APPROVE / COMMENT | **GREEN** → commit, `ExitWorktree(action: "merge")`, done |
+| ok | ok | PASS (or skipped) | APPROVE / COMMENT | **GREEN** → commit, linear-merge (see below), done |
 | ok | ok | PASS | REQUEST_CHANGES | **YELLOW** → loop back to Plan with review findings |
 | ok | fail | — | — | **RED** → loop back to Plan with failing test names + assertions |
 | fail | — | — | — | **RED** → loop back to Plan with compile errors |
 | ok | ok | FAIL | — | **RED** → loop back to Plan with arch violations |
 
 On RED/YELLOW, capture the failure summary (one bullet per concrete failure, with file:line where possible) — this becomes the input to the next Plan phase.
+
+**Linear-merge sequence (only on GREEN):** the repo invariant is a straight-line `git log` — no merge commits. After committing, run:
+
+```bash
+# inside the worktree
+git rebase main                       # linearize on top of current main
+ExitWorktree(action: "keep")          # back to main checkout, worktree preserved on disk
+git merge --ff-only <branch>          # MUST be ff-only — --no-ff is forbidden
+git worktree remove .claude/worktrees/harness-<topic>
+git branch -d <branch>
+```
+
+If `git rebase` reports conflicts, `git rebase --abort`, keep the worktree, and report — never push through conflicts blindly. If `--ff-only` is refused (main moved during rebase), re-rebase and try again; never fall back to a merge-commit-producing strategy.
 
 ## Iteration budget
 

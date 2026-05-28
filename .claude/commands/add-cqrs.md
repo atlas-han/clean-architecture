@@ -21,7 +21,16 @@ Then run the standard worktree cycle:
 
 5. **Review** via `@dotnet-code-reviewer`. Address findings (max 2 cycles).
 
-6. **Commit** (`feat(<feature>): <action> via CQRS slice`) and **`ExitWorktree(action: "merge")`** on green. On failure, keep the worktree and report.
+6. **Commit + linear merge** on green — the repo invariant is a straight-line `git log` (no merge commits):
+   ```bash
+   git commit -m "feat(<feature>): <action> via CQRS slice"
+   git rebase main                       # linearize; abort on conflict and report
+   ExitWorktree(action: "keep")          # back to the main checkout
+   git merge --ff-only <branch>          # MUST be ff-only — --no-ff is forbidden
+   git worktree remove .claude/worktrees/<name>
+   git branch -d <branch>
+   ```
+   On failure, keep the worktree and report. Never use `--no-ff` or plain `git merge`.
 
 Reminders:
 - C# 9 only.

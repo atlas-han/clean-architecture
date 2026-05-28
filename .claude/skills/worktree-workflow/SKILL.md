@@ -5,7 +5,7 @@ description: Use when the user asks how the worktree + parallel-team workflow op
 
 # Worktree + parallel team workflow
 
-The project's standing rule: **any code modification is isolated in a git worktree, verified, then auto-merged on green.** This skill documents the standard lifecycle so every agent follows the same shape.
+The project's standing rule: **any code modification is isolated in a git worktree, verified, then auto-merged on green — always as a linear (fast-forward) merge so `git log --graph` stays a straight line, no merge commits.** This skill documents the standard lifecycle so every agent follows the same shape.
 
 ## When the rule applies
 
@@ -40,11 +40,24 @@ The project's standing rule: **any code modification is isolated in a git worktr
    ```
    - On Domain/csproj changes, also delegate to `@clean-arch-guardian`.
 
-5. **Review + Merge** (only on green)
+5. **Review + Merge (linear / fast-forward only)** (only on green)
    - Delegate to `@dotnet-code-reviewer` (`git diff main...HEAD` is the default scope).
    - Address `REQUEST_CHANGES` findings in-place; re-verify; re-review. Max 2 cycles.
    - Commit (`git add -A && git commit -m "..."`).
-   - `ExitWorktree(action: "merge")` — this merges the worktree branch into the base and removes the worktree.
+   - **Linearize on top of base** (still inside the worktree):
+     ```bash
+     git rebase main          # or whichever branch you forked from
+     ```
+     If rebase reports conflicts, run `git rebase --abort`, leave the worktree, and report — never resolve blindly.
+   - **Fast-forward merge from main** (back in the original checkout):
+     ```bash
+     ExitWorktree(action: "keep")        # returns cwd to the main checkout, worktree stays on disk
+     git merge --ff-only <branch>        # MUST be ff-only; --no-ff is forbidden in this repo
+     git worktree remove .claude/worktrees/<name>
+     git branch -d <branch>
+     ```
+   - The result is a straight-line history — the worktree's commits sit directly on top of `main` with no merge commit.
+   - **Forbidden**: `git merge --no-ff`, `git merge` without `--ff-only`, or anything that creates a merge commit. If ff-only refuses, that means main moved during the rebase window — re-rebase, don't fall back to a merge commit.
 
 6. **Failure handling**
    - Leave the worktree intact. Do **not** force-merge or force-remove.
@@ -63,7 +76,8 @@ The project's standing rule: **any code modification is isolated in a git worktr
 - ❌ Editing on `main` without a worktree because "it's just one line" — if it's truly trivial, do it in place after asking; otherwise worktree.
 - ❌ Spawning a team and assigning conflicting files (= silent merge conflict inside the worktree).
 - ❌ Force-removing a failed worktree to "start fresh" — you lose diagnostic state and may discard real work.
-- ❌ Calling `ExitWorktree(action: "merge")` before build + test pass.
+- ❌ Merging before build + test pass.
+- ❌ Using `git merge --no-ff` or plain `git merge` (without `--ff-only`) — both can create merge commits and break the linear-history invariant.
 - ❌ `git push` from inside the worktree — harness policy denies it; pushes are the user's call.
 
 ## Mental model

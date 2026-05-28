@@ -107,14 +107,24 @@ All 28 existing tests + your new ones must pass. The PostToolUse hook already fo
 
 If you added new csprojs or touched Domain dependencies, delegate to `@clean-arch-guardian` before merging.
 
-## 10. Commit + merge
+## 10. Commit + linear merge
 
 ```bash
 git add -A
 git commit -m "feat(<feature>): <action> via CQRS slice"
 ```
 
-Then `ExitWorktree(action: "merge")` (or `git switch main && git merge --no-ff <branch> && git worktree remove ...`). On test failure, **do not** force a merge — keep the worktree and report.
+Then linearize and fast-forward merge — **the repo invariant is a straight-line `git log` with no merge commits**:
+
+```bash
+git rebase main                       # linearize on top of current main; abort on conflict and report
+ExitWorktree(action: "keep")          # back to the main checkout, worktree preserved on disk
+git merge --ff-only <branch>          # MUST be ff-only — --no-ff is forbidden
+git worktree remove .claude/worktrees/<name>
+git branch -d <branch>
+```
+
+On test failure, **do not** force a merge — keep the worktree and report. Never use `git merge --no-ff` or plain `git merge`; if `--ff-only` is refused, re-rebase and try again.
 
 ## Parallel team option
 

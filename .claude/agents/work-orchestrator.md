@@ -51,10 +51,19 @@ dotnet test --nologo --verbosity minimal
 
 If Domain or any csproj changed, also delegate to `clean-arch-guardian` for a layer audit. Capture the verdicts.
 
-### Phase 5 — Review + Merge (only on green)
+### Phase 5 — Review + Merge (only on green, **linear / fast-forward only**)
 
 1. Delegate to `dotnet-code-reviewer` against the worktree branch's diff.
-2. If review verdict is `APPROVE` or `COMMENT`: stage + commit any uncommitted changes with a clear message, then call `ExitWorktree` with `action: "merge"` (or fall back to `git switch main && git merge --no-ff <branch> && git worktree remove`).
+2. If review verdict is `APPROVE` or `COMMENT`: stage + commit any uncommitted changes with a clear message, then perform a **linear merge** — never a merge commit:
+   ```bash
+   # inside the worktree, after committing:
+   git rebase main                  # linearize on top of current main; --abort on conflicts and report
+   ExitWorktree(action: "keep")     # returns cwd to the main checkout, worktree stays on disk
+   git merge --ff-only <branch>     # MUST be ff-only — --no-ff and plain git merge are forbidden
+   git worktree remove .claude/worktrees/<name>
+   git branch -d <branch>
+   ```
+   This invariant is non-negotiable: the project's `git log --graph` must remain a straight line with zero merge commits. If `--ff-only` is refused (main advanced during rebase), re-rebase and retry; never fall back to a merge-commit-producing strategy.
 3. If review verdict is `REQUEST_CHANGES`: address findings in the worktree, re-verify, re-review. Max 2 iterations — beyond that, hand back to the user.
 
 ### Phase 6 — Failure handling
