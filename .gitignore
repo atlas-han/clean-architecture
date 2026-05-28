@@ -19,6 +19,7 @@ Thumbs.db
 # Local settings (machine-specific, never commit)
 appsettings.Local.json
 appsettings.*.Local.json
+.env
 
 # Claude Code worktrees (managed by harness — never commit)
 .claude/worktrees/

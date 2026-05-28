@@ -1,0 +1,25 @@
+# Flyway runner for the existing local MSSQL container.
+#
+# Assumes a SQL Server is reachable on the host at localhost:1433
+# (e.g. the azure-sql-edge container the project already uses).
+# Flyway runs in its own container and talks to the host via
+# host.docker.internal — `extra_hosts` keeps this working on Linux,
+# where the gateway alias is not present by default.
+#
+# Credentials come from .env (gitignored). See .env.example.
+
+services:
+  flyway:
+    image: flyway/flyway:11-alpine
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      FLYWAY_URL: "jdbc:sqlserver://host.docker.internal:1433;databaseName=${MSSQL_DATABASE};encrypt=true;trustServerCertificate=true"
+      FLYWAY_USER: "${MSSQL_USER}"
+      FLYWAY_PASSWORD: "${MSSQL_SA_PASSWORD}"
+      FLYWAY_CONFIG_FILES: "/flyway/conf/flyway.conf"
+    volumes:
+      - ./db/migrations:/flyway/sql:ro
+      - ./db/flyway.conf:/flyway/conf/flyway.conf:ro
+    # No default command — invoke explicitly with `docker compose run --rm flyway migrate`
+    # (or scripts/db-migrate.sh).
