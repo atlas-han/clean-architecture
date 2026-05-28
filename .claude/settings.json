@@ -32,7 +32,6 @@
       "Bash(rm -rf:*)",
       "Bash(dotnet nuget push:*)",
       "Bash(git reset --hard:*)",
-      "Bash(git branch -D:*)",
       "Bash(git worktree remove --force:*)"
     ]
   },
