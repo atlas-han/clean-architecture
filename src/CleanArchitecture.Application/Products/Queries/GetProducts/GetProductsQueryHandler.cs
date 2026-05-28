@@ -1,18 +1,17 @@
-using System;
-using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using AutoMapper;
 using AutoMapper.QueryableExtensions;
 using CleanArchitecture.Application.Common.Interfaces;
-using CleanArchitecture.Application.Products.Queries.Dtos;
 using CleanArchitecture.Application.Common.Messaging;
+using CleanArchitecture.Application.Common.Models;
+using CleanArchitecture.Application.Products.Queries.Dtos;
 using Microsoft.EntityFrameworkCore;
 
 namespace CleanArchitecture.Application.Products.Queries.GetProducts
 {
-    public class GetProductsQueryHandler : IRequestHandler<GetProductsQuery, IReadOnlyList<ProductDto>>
+    public class GetProductsQueryHandler : IRequestHandler<GetProductsQuery, PagedResult<ProductDto>>
     {
         private readonly IApplicationDbContext _context;
         private readonly IMapper _mapper;
@@ -23,17 +22,20 @@ namespace CleanArchitecture.Application.Products.Queries.GetProducts
             _mapper = mapper;
         }
 
-        public async Task<IReadOnlyList<ProductDto>> Handle(GetProductsQuery request, CancellationToken cancellationToken)
+        public async Task<PagedResult<ProductDto>> Handle(GetProductsQuery request, CancellationToken cancellationToken)
         {
-            var page = Math.Max(1, request.Page);
-            var size = Math.Clamp(request.PageSize, 1, 100);
+            var (page, size) = PageRequest.Normalize(request.Page, request.PageSize);
 
-            return await _context.Products
+            var totalCount = await _context.Products.CountAsync(cancellationToken);
+
+            var items = await _context.Products
                 .OrderByDescending(p => p.CreatedAt)
                 .Skip((page - 1) * size)
                 .Take(size)
                 .ProjectTo<ProductDto>(_mapper.ConfigurationProvider)
                 .ToListAsync(cancellationToken);
+
+            return PagedResult<ProductDto>.Create(items, totalCount, page, size);
         }
     }
 }

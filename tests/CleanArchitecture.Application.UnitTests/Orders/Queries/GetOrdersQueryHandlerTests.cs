@@ -1,5 +1,4 @@
 using System;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using AutoMapper;
@@ -32,14 +31,18 @@ namespace CleanArchitecture.Application.UnitTests.Orders.Queries
         }
 
         [Fact]
-        public async Task Handle_EmptyStore_ReturnsEmptyList()
+        public async Task Handle_EmptyStore_ReturnsEmptyPage()
         {
             using var ctx = TestDbContextFactory.Create();
             var handler = new GetOrdersQueryHandler(ctx, _mapper);
 
             var result = await handler.Handle(new GetOrdersQuery(), CancellationToken.None);
 
-            Assert.Empty(result);
+            Assert.Empty(result.Items);
+            Assert.Equal(0, result.TotalCount);
+            Assert.Equal(0, result.TotalPages);
+            Assert.False(result.HasPrevious);
+            Assert.False(result.HasNext);
         }
 
         [Fact]
@@ -56,9 +59,10 @@ namespace CleanArchitecture.Application.UnitTests.Orders.Queries
 
             var result = await handler.Handle(new GetOrdersQuery(), CancellationToken.None);
 
-            Assert.Equal(2, result.Count);
-            Assert.Equal("Newer", result[0].CustomerName);
-            Assert.Equal("Older", result[1].CustomerName);
+            Assert.Equal(2, result.Items.Count);
+            Assert.Equal(2, result.TotalCount);
+            Assert.Equal("Newer", result.Items[0].CustomerName);
+            Assert.Equal("Older", result.Items[1].CustomerName);
         }
 
         [Fact]
@@ -77,7 +81,7 @@ namespace CleanArchitecture.Application.UnitTests.Orders.Queries
 
             var result = await handler.Handle(new GetOrdersQuery(), CancellationToken.None);
 
-            var dto = Assert.Single(result);
+            var dto = Assert.Single(result.Items);
             Assert.Equal(2, dto.Items.Count);
             Assert.Equal(130m, dto.TotalAmount);
         }
@@ -93,7 +97,8 @@ namespace CleanArchitecture.Application.UnitTests.Orders.Queries
 
             var result = await handler.Handle(new GetOrdersQuery(Page: 0, PageSize: 10), CancellationToken.None);
 
-            Assert.Single(result);
+            Assert.Single(result.Items);
+            Assert.Equal(1, result.Page);
         }
 
         [Fact]
@@ -110,7 +115,8 @@ namespace CleanArchitecture.Application.UnitTests.Orders.Queries
 
             var result = await handler.Handle(new GetOrdersQuery(Page: 1, PageSize: 500), CancellationToken.None);
 
-            Assert.Equal(5, result.Count);
+            Assert.Equal(5, result.Items.Count);
+            Assert.Equal(100, result.PageSize);
         }
 
         [Fact]
@@ -127,9 +133,13 @@ namespace CleanArchitecture.Application.UnitTests.Orders.Queries
 
             var result = await handler.Handle(new GetOrdersQuery(Page: 1, PageSize: 2), CancellationToken.None);
 
-            Assert.Equal(2, result.Count);
-            Assert.Equal("C4", result[0].CustomerName);
-            Assert.Equal("C3", result[1].CustomerName);
+            Assert.Equal(2, result.Items.Count);
+            Assert.Equal(5, result.TotalCount);
+            Assert.Equal(3, result.TotalPages);
+            Assert.True(result.HasNext);
+            Assert.False(result.HasPrevious);
+            Assert.Equal("C4", result.Items[0].CustomerName);
+            Assert.Equal("C3", result.Items[1].CustomerName);
         }
     }
 }

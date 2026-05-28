@@ -21,8 +21,14 @@ namespace CleanArchitecture.Api.IntegrationTests
             });
         }
 
+        private static async Task<Guid> ReadCreatedIdAsync(HttpResponseMessage resp)
+        {
+            var dto = await resp.Content.ReadFromJsonAsync<JsonElement>();
+            return dto.GetProperty("id").GetGuid();
+        }
+
         [Fact]
-        public async Task Create_Then_Get_RoundTrip()
+        public async Task Create_ReturnsLocationAndResourceBody_RoundTrip()
         {
             var payload = new
             {
@@ -34,9 +40,14 @@ namespace CleanArchitecture.Api.IntegrationTests
 
             var createResp = await _client.PostAsJsonAsync("/api/products", payload);
             Assert.Equal(HttpStatusCode.Created, createResp.StatusCode);
+            Assert.NotNull(createResp.Headers.Location);
 
-            var id = await createResp.Content.ReadFromJsonAsync<Guid>();
+            var createdDto = await createResp.Content.ReadFromJsonAsync<JsonElement>();
+            var id = createdDto.GetProperty("id").GetGuid();
             Assert.NotEqual(Guid.Empty, id);
+            Assert.Equal(payload.name, createdDto.GetProperty("name").GetString());
+            Assert.Equal(payload.price, createdDto.GetProperty("price").GetDecimal());
+            Assert.Equal(payload.stock, createdDto.GetProperty("stock").GetInt32());
 
             var getResp = await _client.GetAsync($"/api/products/{id}");
             Assert.Equal(HttpStatusCode.OK, getResp.StatusCode);
@@ -45,6 +56,33 @@ namespace CleanArchitecture.Api.IntegrationTests
             Assert.Equal(payload.name, dto.GetProperty("name").GetString());
             Assert.Equal(payload.price, dto.GetProperty("price").GetDecimal());
             Assert.Equal(payload.stock, dto.GetProperty("stock").GetInt32());
+        }
+
+        [Fact]
+        public async Task GetAll_ReturnsPagedEnvelope()
+        {
+            var payload = new
+            {
+                name = "PG-" + Guid.NewGuid().ToString("N").Substring(0, 8),
+                description = "for paging test",
+                price = 10m,
+                stock = 1
+            };
+            var createResp = await _client.PostAsJsonAsync("/api/products", payload);
+            Assert.Equal(HttpStatusCode.Created, createResp.StatusCode);
+
+            var listResp = await _client.GetAsync("/api/products?page=1&pageSize=100");
+            Assert.Equal(HttpStatusCode.OK, listResp.StatusCode);
+
+            var envelope = await listResp.Content.ReadFromJsonAsync<JsonElement>();
+            Assert.Equal(JsonValueKind.Object, envelope.ValueKind);
+            Assert.Equal(JsonValueKind.Array, envelope.GetProperty("items").ValueKind);
+            Assert.True(envelope.GetProperty("totalCount").GetInt32() >= 1);
+            Assert.Equal(1, envelope.GetProperty("page").GetInt32());
+            Assert.Equal(100, envelope.GetProperty("pageSize").GetInt32());
+            Assert.True(envelope.TryGetProperty("totalPages", out _));
+            Assert.True(envelope.TryGetProperty("hasPrevious", out _));
+            Assert.True(envelope.TryGetProperty("hasNext", out _));
         }
 
         [Fact]
@@ -91,7 +129,7 @@ namespace CleanArchitecture.Api.IntegrationTests
                 stock = 1
             };
             var createResp = await _client.PostAsJsonAsync("/api/products", payload);
-            var id = await createResp.Content.ReadFromJsonAsync<Guid>();
+            var id = await ReadCreatedIdAsync(createResp);
 
             var deleteResp = await _client.DeleteAsync($"/api/products/{id}");
             Assert.Equal(HttpStatusCode.NoContent, deleteResp.StatusCode);

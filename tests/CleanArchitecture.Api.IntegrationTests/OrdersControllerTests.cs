@@ -21,6 +21,12 @@ namespace CleanArchitecture.Api.IntegrationTests
             });
         }
 
+        private static async Task<Guid> ReadCreatedIdAsync(HttpResponseMessage resp)
+        {
+            var dto = await resp.Content.ReadFromJsonAsync<JsonElement>();
+            return dto.GetProperty("id").GetGuid();
+        }
+
         private async Task<Guid> CreateProductAsync(decimal price = 100m, int stock = 10)
         {
             var payload = new
@@ -32,7 +38,7 @@ namespace CleanArchitecture.Api.IntegrationTests
             };
             var resp = await _client.PostAsJsonAsync("/api/products", payload);
             Assert.Equal(HttpStatusCode.Created, resp.StatusCode);
-            return await resp.Content.ReadFromJsonAsync<Guid>();
+            return await ReadCreatedIdAsync(resp);
         }
 
         [Fact]
@@ -51,9 +57,13 @@ namespace CleanArchitecture.Api.IntegrationTests
 
             var createResp = await _client.PostAsJsonAsync("/api/orders", orderPayload);
             Assert.Equal(HttpStatusCode.Created, createResp.StatusCode);
+            Assert.NotNull(createResp.Headers.Location);
 
-            var id = await createResp.Content.ReadFromJsonAsync<Guid>();
+            var createdDto = await createResp.Content.ReadFromJsonAsync<JsonElement>();
+            var id = createdDto.GetProperty("id").GetGuid();
             Assert.NotEqual(Guid.Empty, id);
+            Assert.Equal(orderPayload.customerName, createdDto.GetProperty("customerName").GetString());
+            Assert.Equal(150m, createdDto.GetProperty("totalAmount").GetDecimal());
 
             var getResp = await _client.GetAsync($"/api/orders/{id}");
             Assert.Equal(HttpStatusCode.OK, getResp.StatusCode);
@@ -110,7 +120,7 @@ namespace CleanArchitecture.Api.IntegrationTests
                 items = new[] { new { productId, quantity = 1 } }
             };
             var createResp = await _client.PostAsJsonAsync("/api/orders", orderPayload);
-            var id = await createResp.Content.ReadFromJsonAsync<Guid>();
+            var id = await ReadCreatedIdAsync(createResp);
 
             var cancelResp = await _client.PostAsync($"/api/orders/{id}/cancel", null);
             Assert.Equal(HttpStatusCode.NoContent, cancelResp.StatusCode);
@@ -141,7 +151,7 @@ namespace CleanArchitecture.Api.IntegrationTests
             var placeResp = await _client.PostAsJsonAsync("/api/orders/place", payload);
             Assert.Equal(HttpStatusCode.Created, placeResp.StatusCode);
 
-            var id = await placeResp.Content.ReadFromJsonAsync<Guid>();
+            var id = await ReadCreatedIdAsync(placeResp);
             Assert.NotEqual(Guid.Empty, id);
 
             var getOrder = await _client.GetAsync($"/api/orders/{id}");
@@ -172,7 +182,7 @@ namespace CleanArchitecture.Api.IntegrationTests
         }
 
         [Fact]
-        public async Task GetAll_ReturnsCreatedOrdersWithItems()
+        public async Task GetAll_ReturnsPagedEnvelopeWithCreatedOrders()
         {
             var productId = await CreateProductAsync(price: 20m);
             var marker = "LIST-" + Guid.NewGuid().ToString("N").Substring(0, 8);
@@ -188,11 +198,17 @@ namespace CleanArchitecture.Api.IntegrationTests
             var listResp = await _client.GetAsync("/api/orders?page=1&pageSize=100");
             Assert.Equal(HttpStatusCode.OK, listResp.StatusCode);
 
-            var array = await listResp.Content.ReadFromJsonAsync<JsonElement>();
-            Assert.Equal(JsonValueKind.Array, array.ValueKind);
+            var envelope = await listResp.Content.ReadFromJsonAsync<JsonElement>();
+            Assert.Equal(JsonValueKind.Object, envelope.ValueKind);
+            Assert.True(envelope.GetProperty("totalCount").GetInt32() >= 1);
+            Assert.Equal(1, envelope.GetProperty("page").GetInt32());
+            Assert.Equal(100, envelope.GetProperty("pageSize").GetInt32());
+
+            var items = envelope.GetProperty("items");
+            Assert.Equal(JsonValueKind.Array, items.ValueKind);
 
             JsonElement? mine = null;
-            foreach (var el in array.EnumerateArray())
+            foreach (var el in items.EnumerateArray())
             {
                 if (el.GetProperty("customerName").GetString() == marker)
                 {

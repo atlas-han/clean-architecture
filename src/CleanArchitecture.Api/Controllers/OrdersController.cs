@@ -1,6 +1,6 @@
 using System;
-using System.Collections.Generic;
 using System.Threading.Tasks;
+using CleanArchitecture.Application.Common.Models;
 using CleanArchitecture.Application.Orders.Commands.CancelOrder;
 using CleanArchitecture.Application.Orders.Commands.CreateOrder;
 using CleanArchitecture.Application.Orders.Commands.PlaceOrder;
@@ -14,12 +14,12 @@ namespace CleanArchitecture.Api.Controllers
     public class OrdersController : ApiControllerBase
     {
         [HttpGet]
-        public async Task<ActionResult<IReadOnlyList<OrderDto>>> GetAll(
+        public async Task<ActionResult<PagedResult<OrderDto>>> GetAll(
             [FromQuery] int page = 1,
             [FromQuery] int pageSize = 20)
         {
-            var orders = await Sender.Send(new GetOrdersQuery(page, pageSize));
-            return Ok(orders);
+            var result = await Sender.Send(new GetOrdersQuery(page, pageSize));
+            return Ok(result);
         }
 
         [HttpGet("{id:guid}")]
@@ -30,17 +30,19 @@ namespace CleanArchitecture.Api.Controllers
         }
 
         [HttpPost]
-        public async Task<ActionResult<Guid>> Create([FromBody] CreateOrderCommand command)
+        public async Task<ActionResult<OrderDto>> Create([FromBody] CreateOrderCommand command)
         {
             var id = await Sender.Send(command);
-            return CreatedAtAction(nameof(GetById), new { id }, id);
+            var dto = await Sender.Send(new GetOrderByIdQuery(id));
+            return CreatedAtAction(nameof(GetById), new { id }, dto);
         }
 
         [HttpPost("place")]
-        public async Task<ActionResult<Guid>> Place([FromBody] PlaceOrderCommand command)
+        public async Task<ActionResult<OrderDto>> Place([FromBody] PlaceOrderCommand command)
         {
             var id = await Sender.Send(command);
-            return CreatedAtAction(nameof(GetById), new { id }, id);
+            var dto = await Sender.Send(new GetOrderByIdQuery(id));
+            return CreatedAtAction(nameof(GetById), new { id }, dto);
         }
 
         [HttpPost("{id:guid}/cancel")]
