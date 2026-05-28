@@ -57,6 +57,7 @@ namespace CleanArchitecture.Api.Logging
                 foreach (var kvp in kvps)
                 {
                     if (kvp.Key == OriginalFormatKey) continue;
+                    if (kvp.Key == "RequestPath") continue;
                     target[ToSnakeCase(kvp.Key)] = kvp.Value;
                 }
             }
