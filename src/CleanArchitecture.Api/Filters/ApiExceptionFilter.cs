@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
+using CleanArchitecture.Api.Common;
 using CleanArchitecture.Application.Common.Exceptions;
 using CleanArchitecture.Domain.Exceptions;
 using Microsoft.AspNetCore.Http;
@@ -47,8 +49,11 @@ namespace CleanArchitecture.Api.Filters
             {
                 Title = "One or more validation errors occurred.",
                 Status = StatusCodes.Status400BadRequest,
-                Type = "https://tools.ietf.org/html/rfc7231#section-6.5.1"
+                Type = ErrorCodes.TypeValidationFailed,
+                Detail = "Request contains invalid fields. See 'errors' for details."
             };
+
+            Enrich(details, context, ErrorCodes.ValidationFailed);
 
             context.Result = new BadRequestObjectResult(details);
             context.ExceptionHandled = true;
@@ -60,8 +65,11 @@ namespace CleanArchitecture.Api.Filters
             {
                 Title = "The specified resource was not found.",
                 Status = StatusCodes.Status404NotFound,
+                Type = ErrorCodes.TypeResourceNotFound,
                 Detail = context.Exception.Message
             };
+
+            Enrich(details, context, ErrorCodes.ResourceNotFound);
 
             context.Result = new NotFoundObjectResult(details);
             context.ExceptionHandled = true;
@@ -73,8 +81,11 @@ namespace CleanArchitecture.Api.Filters
             {
                 Title = "A domain rule was violated.",
                 Status = StatusCodes.Status400BadRequest,
+                Type = ErrorCodes.TypeDomainRuleViolated,
                 Detail = context.Exception.Message
             };
+
+            Enrich(details, context, ErrorCodes.DomainRuleViolated);
 
             context.Result = new BadRequestObjectResult(details);
             context.ExceptionHandled = true;
@@ -86,14 +97,25 @@ namespace CleanArchitecture.Api.Filters
             {
                 Status = StatusCodes.Status500InternalServerError,
                 Title = "An error occurred while processing your request.",
-                Type = "https://tools.ietf.org/html/rfc7231#section-6.6.1"
+                Type = ErrorCodes.TypeInternalError,
+                Detail = "An unexpected error occurred. Reference traceId for support."
             };
+
+            Enrich(details, context, ErrorCodes.InternalError);
 
             context.Result = new ObjectResult(details)
             {
                 StatusCode = StatusCodes.Status500InternalServerError
             };
             context.ExceptionHandled = true;
+        }
+
+        private static void Enrich(ProblemDetails details, ExceptionContext context, string code)
+        {
+            details.Instance = context.HttpContext.Request.Path;
+            details.Extensions["code"] = code;
+            details.Extensions["traceId"] = Activity.Current?.Id ?? context.HttpContext.TraceIdentifier;
+            details.Extensions["timestamp"] = DateTime.UtcNow.ToString("o");
         }
     }
 }
