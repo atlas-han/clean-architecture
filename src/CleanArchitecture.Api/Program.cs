@@ -23,6 +23,16 @@ builder.Logging.ClearProviders();
 builder.Logging.AddConsole(options => options.FormatterName = JsonConsoleFormatter.FormatterName);
 builder.Logging.AddConsoleFormatter<JsonConsoleFormatter, ConsoleFormatterOptions>();
 
+// In Development/Local on macOS the dev cert + HTTP/2 + SslStream combination intermittently
+// fails on GOAWAY flush during connection teardown ("Bad address" from Http2FrameWriter.WriteGoAwayAsync),
+// spamming Kestrel error logs even though the response was already delivered. Pin local HTTPS
+// to HTTP/1.1 via Kestrel's config-binding path so URL-bound endpoints honor it; production
+// keeps the framework default (Http1AndHttp2).
+if (builder.Environment.IsDevelopment() || builder.Environment.IsEnvironment("Local"))
+{
+    builder.Configuration["Kestrel:EndpointDefaults:Protocols"] = "Http1";
+}
+
 builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
 
