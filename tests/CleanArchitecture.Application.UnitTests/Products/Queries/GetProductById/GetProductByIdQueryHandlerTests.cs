@@ -9,7 +9,7 @@ using CleanArchitecture.Application.UnitTests.TestDoubles;
 using CleanArchitecture.Domain.Entities;
 using Xunit;
 
-namespace CleanArchitecture.Application.UnitTests.Products.Queries
+namespace CleanArchitecture.Application.UnitTests.Products.Queries.GetProductById
 {
     public class GetProductByIdQueryHandlerTests
     {

@@ -9,7 +9,7 @@ using CleanArchitecture.Application.UnitTests.TestDoubles;
 using CleanArchitecture.Domain.Entities;
 using Xunit;
 
-namespace CleanArchitecture.Application.UnitTests.Orders.Queries
+namespace CleanArchitecture.Application.UnitTests.Orders.Queries.GetOrderById
 {
     public class GetOrderByIdQueryHandlerTests
     {
