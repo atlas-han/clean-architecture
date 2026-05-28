@@ -1,3 +1,4 @@
+using System;
 using System.Linq;
 using System.Text.Json;
 using CleanArchitecture.Api.Filters;
@@ -8,6 +9,7 @@ using CleanArchitecture.Infrastructure;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Hosting;
@@ -23,6 +25,11 @@ builder.Logging.AddConsoleFormatter<JsonConsoleFormatter, ConsoleFormatterOption
 
 builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
+
+// Graceful shutdown: give in-flight requests up to Shutdown:Timeout (default 30s) to drain
+// after SIGTERM / Ctrl+C before the host force-exits.
+var shutdownTimeout = builder.Configuration.GetValue<TimeSpan?>("Shutdown:Timeout") ?? TimeSpan.FromSeconds(30);
+builder.Services.Configure<HostOptions>(options => options.ShutdownTimeout = shutdownTimeout);
 
 // "application" liveness check; the "database" check is registered in AddInfrastructure.
 builder.Services.AddHealthChecks()
@@ -45,6 +52,13 @@ builder.Services.AddSwaggerGen(c =>
 });
 
 var app = builder.Build();
+
+var lifetime = app.Lifetime;
+var shutdownLogger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("GracefulShutdown");
+lifetime.ApplicationStopping.Register(() =>
+    shutdownLogger.LogInformation("Application stopping: draining in-flight requests (timeout {ShutdownTimeoutSeconds}s)", shutdownTimeout.TotalSeconds));
+lifetime.ApplicationStopped.Register(() =>
+    shutdownLogger.LogInformation("Application stopped"));
 
 if (app.Environment.IsDevelopment() || app.Environment.IsEnvironment("Local"))
 {

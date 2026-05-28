@@ -118,7 +118,8 @@ namespace CleanArchitecture.Api.IntegrationTests
             };
             var resp = await _client.PostAsJsonAsync("/api/products", payload);
             Assert.Equal(HttpStatusCode.Created, resp.StatusCode);
-            return await resp.Content.ReadFromJsonAsync<Guid>();
+            var dto = await resp.Content.ReadFromJsonAsync<JsonElement>();
+            return dto.GetProperty("id").GetGuid();
         }
     }
 }
