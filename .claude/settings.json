@@ -20,6 +20,7 @@
       "Bash(git merge:*)",
       "Bash(git worktree:*)",
       "Bash(git ls-files:*)",
+      "Bash(git push:*)",
       "Bash(grep:*)",
       "Bash(find . -*)",
       "Bash(ls:*)",
@@ -30,7 +31,6 @@
     "deny": [
       "Bash(rm -rf:*)",
       "Bash(dotnet nuget push:*)",
-      "Bash(git push:*)",
       "Bash(git reset --hard:*)",
       "Bash(git branch -D:*)",
       "Bash(git worktree remove --force:*)"
