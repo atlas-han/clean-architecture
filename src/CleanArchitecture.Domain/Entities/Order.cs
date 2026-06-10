@@ -14,7 +14,9 @@ namespace CleanArchitecture.Domain.Entities
         public string CustomerName { get; private set; } = string.Empty;
         public OrderStatus Status { get; private set; } = OrderStatus.Pending;
 
-        public IReadOnlyList<OrderItem> Items => _items;
+        // AsReadOnly prevents callers from casting back to List<OrderItem>
+        // and bypassing the AddItem invariants.
+        public IReadOnlyList<OrderItem> Items => _items.AsReadOnly();
 
         public Money TotalAmount => _items.Aggregate(Money.Zero, (sum, i) => sum + i.LineTotal);
 
