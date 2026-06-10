@@ -7,6 +7,7 @@ using CleanArchitecture.Domain.Exceptions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Filters;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
 namespace CleanArchitecture.Api.Filters
@@ -24,6 +25,7 @@ namespace CleanArchitecture.Api.Filters
                 [typeof(ValidationException)] = HandleValidation,
                 [typeof(NotFoundException)] = HandleNotFound,
                 [typeof(DomainException)] = HandleDomain,
+                [typeof(DbUpdateConcurrencyException)] = HandleConcurrency,
             };
         }
 
@@ -95,6 +97,22 @@ namespace CleanArchitecture.Api.Filters
             Enrich(details, context, ErrorCodes.DomainRuleViolated);
 
             context.Result = new BadRequestObjectResult(details);
+            context.ExceptionHandled = true;
+        }
+
+        private static void HandleConcurrency(ExceptionContext context)
+        {
+            var details = new ProblemDetails
+            {
+                Title = "The resource was modified by another request.",
+                Status = StatusCodes.Status409Conflict,
+                Type = ErrorCodes.TypeConcurrencyConflict,
+                Detail = "The resource changed while this request was being processed. Refresh and retry."
+            };
+
+            Enrich(details, context, ErrorCodes.ConcurrencyConflict);
+
+            context.Result = new ConflictObjectResult(details);
             context.ExceptionHandled = true;
         }
 

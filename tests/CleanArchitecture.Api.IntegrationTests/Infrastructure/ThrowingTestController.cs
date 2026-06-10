@@ -1,6 +1,7 @@
 using System;
 using CleanArchitecture.Domain.Exceptions;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 
 namespace CleanArchitecture.Api.IntegrationTests.Infrastructure
 {
@@ -18,6 +19,12 @@ namespace CleanArchitecture.Api.IntegrationTests.Infrastructure
         public IActionResult ThrowDerivedDomain()
         {
             throw new DerivedDomainException("Derived domain rule was violated.");
+        }
+
+        [HttpGet("throw-concurrency")]
+        public IActionResult ThrowConcurrency()
+        {
+            throw new DbUpdateConcurrencyException("simulated concurrency conflict");
         }
     }
 

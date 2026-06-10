@@ -79,6 +79,17 @@ namespace CleanArchitecture.Api.IntegrationTests
         }
 
         [Fact]
+        public async Task Concurrency_Conflict_Maps_To_409_With_Standard_Envelope()
+        {
+            var resp = await _client.GetAsync("/api/_test/throw-concurrency");
+
+            Assert.Equal(HttpStatusCode.Conflict, resp.StatusCode);
+            var problem = await resp.Content.ReadFromJsonAsync<JsonElement>();
+
+            AssertCommonEnvelope(problem, expectedStatus: 409, expectedCode: "CONCURRENCY_CONFLICT", expectedInstance: "/api/_test/throw-concurrency");
+        }
+
+        [Fact]
         public async Task Unknown_500_Response_Does_Not_Leak_Internal_Message()
         {
             var resp = await _client.GetAsync("/api/_test/throw");

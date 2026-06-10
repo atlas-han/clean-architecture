@@ -21,6 +21,12 @@ namespace CleanArchitecture.Infrastructure.Persistence.Configurations
             builder.Property(p => p.Price)
                 .HasConversion(money => money.Amount, value => new Money(value))
                 .HasPrecision(18, 2);
+
+            // Concurrency token: two PlaceOrders racing on the same product must
+            // not both pass DecreaseStock and oversell — the loser's SaveChanges
+            // throws DbUpdateConcurrencyException instead of silently overwriting.
+            builder.Property(p => p.Stock)
+                .IsConcurrencyToken();
         }
     }
 }
