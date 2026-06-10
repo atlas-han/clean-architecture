@@ -68,6 +68,17 @@ namespace CleanArchitecture.Api.IntegrationTests
         }
 
         [Fact]
+        public async Task Derived_Domain_Exception_Maps_To_400_DomainRuleViolated()
+        {
+            var resp = await _client.GetAsync("/api/_test/throw-derived-domain");
+
+            Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
+            var problem = await resp.Content.ReadFromJsonAsync<JsonElement>();
+
+            AssertCommonEnvelope(problem, expectedStatus: 400, expectedCode: "DOMAIN_RULE_VIOLATED", expectedInstance: "/api/_test/throw-derived-domain");
+        }
+
+        [Fact]
         public async Task Unknown_500_Response_Does_Not_Leak_Internal_Message()
         {
             var resp = await _client.GetAsync("/api/_test/throw");

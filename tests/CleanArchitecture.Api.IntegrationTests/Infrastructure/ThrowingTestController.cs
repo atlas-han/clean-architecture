@@ -1,4 +1,5 @@
 using System;
+using CleanArchitecture.Domain.Exceptions;
 using Microsoft.AspNetCore.Mvc;
 
 namespace CleanArchitecture.Api.IntegrationTests.Infrastructure
@@ -12,5 +13,16 @@ namespace CleanArchitecture.Api.IntegrationTests.Infrastructure
         {
             throw new InvalidOperationException("internal-secret-do-not-leak");
         }
+
+        [HttpGet("throw-derived-domain")]
+        public IActionResult ThrowDerivedDomain()
+        {
+            throw new DerivedDomainException("Derived domain rule was violated.");
+        }
+    }
+
+    public class DerivedDomainException : DomainException
+    {
+        public DerivedDomainException(string message) : base(message) { }
     }
 }

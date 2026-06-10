@@ -32,11 +32,15 @@ namespace CleanArchitecture.Api.Filters
 
         private void HandleException(ExceptionContext context)
         {
-            var type = context.Exception.GetType();
-            if (_handlers.TryGetValue(type, out var handler))
+            // Walk the type hierarchy so derived exceptions (e.g. a subclass of
+            // DomainException) map to the same response as their base type.
+            for (var type = context.Exception.GetType(); type != null; type = type.BaseType)
             {
-                handler.Invoke(context);
-                return;
+                if (_handlers.TryGetValue(type, out var handler))
+                {
+                    handler.Invoke(context);
+                    return;
+                }
             }
 
             HandleUnknown(context);
