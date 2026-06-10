@@ -22,14 +22,12 @@ namespace CleanArchitecture.Application.UnitTests.Orders.Queries.GetOrders
             _mapper = config.CreateMapper();
         }
 
-        private static Order MakeOrder(string customer, DateTime createdAt)
+        private static Order MakeOrder(string customer)
         {
-            var order = new Order(customer, new[]
+            return new Order(customer, new[]
             {
                 new OrderItem(Guid.NewGuid(), "Item", new Money(10m), 1)
             });
-            order.MarkCreated(createdAt);
-            return order;
         }
 
         [Fact]
@@ -51,10 +49,9 @@ namespace CleanArchitecture.Application.UnitTests.Orders.Queries.GetOrders
         public async Task Handle_ReturnsItemsOrderedByCreatedAtDescending()
         {
             using var ctx = TestDbContextFactory.Create();
-            var older = MakeOrder("Older", new DateTime(2025, 1, 1, 0, 0, 0, DateTimeKind.Utc));
-            var newer = MakeOrder("Newer", new DateTime(2025, 6, 1, 0, 0, 0, DateTimeKind.Utc));
-            ctx.Orders.Add(older);
-            ctx.Orders.Add(newer);
+            ctx.Orders.Add(MakeOrder("Older"));
+            await ctx.SaveChangesAsync(CancellationToken.None);
+            ctx.Orders.Add(MakeOrder("Newer"));
             await ctx.SaveChangesAsync(CancellationToken.None);
 
             var handler = new GetOrdersQueryHandler(ctx, _mapper);
@@ -65,6 +62,7 @@ namespace CleanArchitecture.Application.UnitTests.Orders.Queries.GetOrders
             Assert.Equal(2, result.TotalCount);
             Assert.Equal("Newer", result.Items[0].CustomerName);
             Assert.Equal("Older", result.Items[1].CustomerName);
+            Assert.True(result.Items[0].CreatedAt > result.Items[1].CreatedAt);
         }
 
         [Fact]
@@ -92,7 +90,7 @@ namespace CleanArchitecture.Application.UnitTests.Orders.Queries.GetOrders
         public async Task Handle_PageZero_IsClampedToFirstPage()
         {
             using var ctx = TestDbContextFactory.Create();
-            ctx.Orders.Add(MakeOrder("Only", new DateTime(2025, 1, 1, 0, 0, 0, DateTimeKind.Utc)));
+            ctx.Orders.Add(MakeOrder("Only"));
             await ctx.SaveChangesAsync(CancellationToken.None);
 
             var handler = new GetOrdersQueryHandler(ctx, _mapper);
@@ -109,9 +107,9 @@ namespace CleanArchitecture.Application.UnitTests.Orders.Queries.GetOrders
             using var ctx = TestDbContextFactory.Create();
             for (var i = 0; i < 5; i++)
             {
-                ctx.Orders.Add(MakeOrder("C" + i, new DateTime(2025, 1, 1, 0, 0, 0, DateTimeKind.Utc).AddDays(i)));
+                ctx.Orders.Add(MakeOrder("C" + i));
+                await ctx.SaveChangesAsync(CancellationToken.None);
             }
-            await ctx.SaveChangesAsync(CancellationToken.None);
 
             var handler = new GetOrdersQueryHandler(ctx, _mapper);
 
@@ -127,9 +125,9 @@ namespace CleanArchitecture.Application.UnitTests.Orders.Queries.GetOrders
             using var ctx = TestDbContextFactory.Create();
             for (var i = 0; i < 5; i++)
             {
-                ctx.Orders.Add(MakeOrder("C" + i, new DateTime(2025, 1, 1, 0, 0, 0, DateTimeKind.Utc).AddDays(i)));
+                ctx.Orders.Add(MakeOrder("C" + i));
+                await ctx.SaveChangesAsync(CancellationToken.None);
             }
-            await ctx.SaveChangesAsync(CancellationToken.None);
 
             var handler = new GetOrdersQueryHandler(ctx, _mapper);
 

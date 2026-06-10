@@ -59,7 +59,7 @@ Query 도 동일 구조 (`Queries/Get<X>/`), DTO 는 `Queries/Dtos/` 에 별도 
 
 ```bash
 dotnet build                                                            # 전체
-dotnet test                                                             # 전체 (121 tests)
+dotnet test                                                             # 전체 (144 tests)
 dotnet test tests/CleanArchitecture.Domain.UnitTests              # Domain 만
 dotnet test tests/CleanArchitecture.Application.UnitTests         # Application 만
 dotnet test tests/CleanArchitecture.Api.IntegrationTests          # API 통합 만
