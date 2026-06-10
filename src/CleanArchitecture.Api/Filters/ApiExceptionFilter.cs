@@ -7,15 +7,18 @@ using CleanArchitecture.Domain.Exceptions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Filters;
+using Microsoft.Extensions.Logging;
 
 namespace CleanArchitecture.Api.Filters
 {
     public class ApiExceptionFilter : ExceptionFilterAttribute
     {
         private readonly IDictionary<Type, Action<ExceptionContext>> _handlers;
+        private readonly ILogger<ApiExceptionFilter> _logger;
 
-        public ApiExceptionFilter()
+        public ApiExceptionFilter(ILogger<ApiExceptionFilter> logger)
         {
+            _logger = logger;
             _handlers = new Dictionary<Type, Action<ExceptionContext>>
             {
                 [typeof(ValidationException)] = HandleValidation,
@@ -95,8 +98,13 @@ namespace CleanArchitecture.Api.Filters
             context.ExceptionHandled = true;
         }
 
-        private static void HandleUnknown(ExceptionContext context)
+        private void HandleUnknown(ExceptionContext context)
         {
+            _logger.LogError(
+                context.Exception,
+                "Unhandled exception while processing {Path}",
+                context.HttpContext.Request.Path);
+
             var details = new ProblemDetails
             {
                 Status = StatusCodes.Status500InternalServerError,
