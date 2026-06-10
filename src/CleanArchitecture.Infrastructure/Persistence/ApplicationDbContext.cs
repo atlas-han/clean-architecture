@@ -1,3 +1,4 @@
+using System;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
@@ -6,7 +7,6 @@ using CleanArchitecture.Domain.Common;
 using CleanArchitecture.Domain.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
-using Microsoft.EntityFrameworkCore.Storage;
 
 namespace CleanArchitecture.Infrastructure.Persistence
 {
@@ -35,9 +35,14 @@ namespace CleanArchitecture.Infrastructure.Persistence
             return base.SaveChangesAsync(cancellationToken);
         }
 
-        public Task<IDbContextTransaction> BeginTransactionAsync(CancellationToken cancellationToken)
+        public async Task<TResult> ExecuteInTransactionAsync<TResult>(
+            Func<CancellationToken, Task<TResult>> operation,
+            CancellationToken cancellationToken)
         {
-            return Database.BeginTransactionAsync(cancellationToken);
+            await using var transaction = await Database.BeginTransactionAsync(cancellationToken);
+            var result = await operation(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+            return result;
         }
 
         private void ApplyAuditFields()

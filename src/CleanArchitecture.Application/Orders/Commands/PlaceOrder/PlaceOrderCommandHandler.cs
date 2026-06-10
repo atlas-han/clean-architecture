@@ -23,42 +23,41 @@ namespace CleanArchitecture.Application.Orders.Commands.PlaceOrder
         // kept as a counterpart to CreateOrderCommandHandler's single-SaveChanges path.
         // Functionally a single SaveChangesAsync would persist the stock decrements and
         // the new Order atomically via EF Core's implicit transaction, so the explicit
-        // BeginTransactionAsync below is not strictly required for the current logic.
-        // It is preserved to illustrate how to wrap several SaveChanges calls in one
-        // atomic unit — useful when work needs to happen between writes (e.g. reading
-        // a generated key, calling another aggregate, publishing an event) while still
-        // rolling back every table together on failure.
-        public async Task<Guid> Handle(PlaceOrderCommand request, CancellationToken cancellationToken)
+        // ExecuteInTransactionAsync wrapper below is not strictly required for the
+        // current logic. It is preserved to illustrate how to wrap several SaveChanges
+        // calls in one atomic unit — useful when work needs to happen between writes
+        // (e.g. reading a generated key, calling another aggregate, publishing an
+        // event) while still rolling back every table together on failure.
+        public Task<Guid> Handle(PlaceOrderCommand request, CancellationToken cancellationToken)
         {
-            await using var transaction = await _context.BeginTransactionAsync(cancellationToken);
-
-            var orderItems = new List<OrderItem>();
-
-            foreach (var line in request.Items)
+            return _context.ExecuteInTransactionAsync(async ct =>
             {
-                var product = await _context.Products
-                    .FirstOrDefaultAsync(p => p.Id == line.ProductId, cancellationToken);
+                var orderItems = new List<OrderItem>();
 
-                if (product is null)
-                    throw new NotFoundException(nameof(Product), line.ProductId);
+                foreach (var line in request.Items)
+                {
+                    var product = await _context.Products
+                        .FirstOrDefaultAsync(p => p.Id == line.ProductId, ct);
 
-                product.DecreaseStock(line.Quantity);
-                orderItems.Add(new OrderItem(product.Id, product.Name, product.Price, line.Quantity));
-            }
+                    if (product is null)
+                        throw new NotFoundException(nameof(Product), line.ProductId);
 
-            // First write: persist the stock decrements on the Products table.
-            await _context.SaveChangesAsync(cancellationToken);
+                    product.DecreaseStock(line.Quantity);
+                    orderItems.Add(new OrderItem(product.Id, product.Name, product.Price, line.Quantity));
+                }
 
-            // Second write: persist the new order on the Orders table.
-            var order = new Order(request.CustomerName, orderItems);
-            _context.Orders.Add(order);
-            await _context.SaveChangesAsync(cancellationToken);
+                // First write: persist the stock decrements on the Products table.
+                await _context.SaveChangesAsync(ct);
 
-            // Both writes commit atomically; an exception before this disposes the
-            // transaction and rolls both tables back.
-            await transaction.CommitAsync(cancellationToken);
+                // Second write: persist the new order on the Orders table.
+                var order = new Order(request.CustomerName, orderItems);
+                _context.Orders.Add(order);
+                await _context.SaveChangesAsync(ct);
 
-            return order.Id;
+                // Both writes commit atomically when the delegate returns; an exception
+                // inside the delegate rolls both tables back.
+                return order.Id;
+            }, cancellationToken);
         }
     }
 }

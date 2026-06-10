@@ -1,10 +1,10 @@
+using System;
 using System.Threading;
 using System.Threading.Tasks;
 using CleanArchitecture.Application.Common.Interfaces;
 using CleanArchitecture.Domain.Entities;
 using CleanArchitecture.Domain.ValueObjects;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Storage;
 
 namespace CleanArchitecture.Application.UnitTests.TestDoubles
 {
@@ -15,9 +15,14 @@ namespace CleanArchitecture.Application.UnitTests.TestDoubles
         public DbSet<Product> Products => Set<Product>();
         public DbSet<Order> Orders => Set<Order>();
 
-        public Task<IDbContextTransaction> BeginTransactionAsync(CancellationToken cancellationToken)
+        public async Task<TResult> ExecuteInTransactionAsync<TResult>(
+            Func<CancellationToken, Task<TResult>> operation,
+            CancellationToken cancellationToken)
         {
-            return Database.BeginTransactionAsync(cancellationToken);
+            await using var transaction = await Database.BeginTransactionAsync(cancellationToken);
+            var result = await operation(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+            return result;
         }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)

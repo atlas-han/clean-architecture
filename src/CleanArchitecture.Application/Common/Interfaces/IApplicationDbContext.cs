@@ -1,8 +1,8 @@
+using System;
 using System.Threading;
 using System.Threading.Tasks;
 using CleanArchitecture.Domain.Entities;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Storage;
 
 namespace CleanArchitecture.Application.Common.Interfaces
 {
@@ -13,6 +13,8 @@ namespace CleanArchitecture.Application.Common.Interfaces
 
         Task<int> SaveChangesAsync(CancellationToken cancellationToken);
 
-        Task<IDbContextTransaction> BeginTransactionAsync(CancellationToken cancellationToken);
+        Task<TResult> ExecuteInTransactionAsync<TResult>(
+            Func<CancellationToken, Task<TResult>> operation,
+            CancellationToken cancellationToken);
     }
 }
