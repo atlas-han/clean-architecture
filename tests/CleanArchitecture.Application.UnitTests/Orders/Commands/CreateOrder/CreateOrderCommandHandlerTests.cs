@@ -8,6 +8,7 @@ using CleanArchitecture.Application.Orders.Commands.CreateOrder;
 using CleanArchitecture.Application.UnitTests.TestDoubles;
 using CleanArchitecture.Domain.Entities;
 using CleanArchitecture.Domain.Enums;
+using CleanArchitecture.Domain.Exceptions;
 using CleanArchitecture.Domain.ValueObjects;
 using Microsoft.EntityFrameworkCore;
 using Xunit;
@@ -50,6 +51,42 @@ namespace CleanArchitecture.Application.UnitTests.Orders.Commands.CreateOrder
                 new List<CreateOrderItemDto> { new(Guid.NewGuid(), 1) });
 
             await Assert.ThrowsAsync<NotFoundException>(
+                () => handler.Handle(command, CancellationToken.None));
+        }
+
+        [Fact]
+        public async Task Handle_DecrementsProductStock()
+        {
+            using var ctx = TestDbContextFactory.Create();
+            var product = new Product("Mouse", "Wireless", new Money(30m), 100);
+            ctx.Products.Add(product);
+            await ctx.SaveChangesAsync(CancellationToken.None);
+
+            var handler = new CreateOrderCommandHandler(ctx);
+            var command = new CreateOrderCommand(
+                "Alice",
+                new List<CreateOrderItemDto> { new(product.Id, 3) });
+
+            await handler.Handle(command, CancellationToken.None);
+
+            var persisted = await ctx.Products.FirstAsync(p => p.Id == product.Id);
+            Assert.Equal(97, persisted.Stock);
+        }
+
+        [Fact]
+        public async Task Handle_InsufficientStock_ThrowsDomainException()
+        {
+            using var ctx = TestDbContextFactory.Create();
+            var product = new Product("Mouse", "Wireless", new Money(30m), 2);
+            ctx.Products.Add(product);
+            await ctx.SaveChangesAsync(CancellationToken.None);
+
+            var handler = new CreateOrderCommandHandler(ctx);
+            var command = new CreateOrderCommand(
+                "Alice",
+                new List<CreateOrderItemDto> { new(product.Id, 5) });
+
+            await Assert.ThrowsAsync<DomainException>(
                 () => handler.Handle(command, CancellationToken.None));
         }
 

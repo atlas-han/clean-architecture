@@ -87,6 +87,22 @@ namespace CleanArchitecture.Api.IntegrationTests
         }
 
         [Fact]
+        public async Task Create_InsufficientStock_Returns_400()
+        {
+            var productId = await CreateProductAsync(price: 40m, stock: 2);
+
+            var payload = new
+            {
+                customerName = "Frank",
+                items = new[] { new { productId, quantity = 5 } }
+            };
+
+            var resp = await _client.PostAsJsonAsync("/api/orders", payload);
+
+            Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
+        }
+
+        [Fact]
         public async Task Create_WithUnknownProductId_Returns_404()
         {
             var payload = new

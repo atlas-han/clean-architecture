@@ -31,12 +31,17 @@ namespace CleanArchitecture.Application.Orders.Commands.CreateOrder
                 if (product is null)
                     throw new NotFoundException(nameof(Product), line.ProductId);
 
+                product.DecreaseStock(line.Quantity);
                 orderItems.Add(new OrderItem(product.Id, product.Name, product.Price, line.Quantity));
             }
 
             var order = new Order(request.CustomerName, orderItems);
 
             _context.Orders.Add(order);
+
+            // Stock decrements and the new Order persist atomically in this single
+            // SaveChanges — the counterpart to PlaceOrder's multi-SaveChanges +
+            // explicit transaction demo.
             await _context.SaveChangesAsync(cancellationToken);
 
             return order.Id;
