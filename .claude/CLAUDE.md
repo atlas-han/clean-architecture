@@ -32,6 +32,8 @@ Application/<Feature>/Commands/<Action><Feature>/
 
 Query 도 동일 구조 (`Queries/Get<X>/`), DTO 는 `Queries/Dtos/` 에 별도 파일.
 
+`IRequest<T>` / `IRequestHandler<,>` / `ISender` / `IPipelineBehavior<,>` 는 MediatR 이 아니라 `Application/Common/Messaging/` 의 자체 구현입니다 — MediatR NuGet 을 추가하지 마세요.
+
 각 슬라이스에는 **반드시** 대응 테스트가 따라옵니다:
 - `tests/Application.UnitTests/<Feature>/Commands/<Action><Feature>/<Handler|Validator>Tests.cs`
 - Application 테스트는 **TestDoubles/TestDbContext** (자체 `IApplicationDbContext` 구현) 사용. Infrastructure 의 `ApplicationDbContext` 를 직접 참조하지 마세요 — `IApplicationDbContext` 가 Application 의 경계임을 강제하는 의도된 분리입니다.
