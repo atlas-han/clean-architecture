@@ -59,7 +59,7 @@ Query 도 동일 구조 (`Queries/Get<X>/`), DTO 는 `Queries/Dtos/` 에 별도 
 
 ```bash
 dotnet build                                                            # 전체
-dotnet test                                                             # 전체 (28 tests)
+dotnet test                                                             # 전체 (122 tests)
 dotnet test tests/CleanArchitecture.Domain.UnitTests              # Domain 만
 dotnet test tests/CleanArchitecture.Application.UnitTests         # Application 만
 dotnet test tests/CleanArchitecture.Api.IntegrationTests          # API 통합 만
@@ -67,6 +67,8 @@ dotnet run --project src/CleanArchitecture.Api                    # 실행 (http
 ```
 
 `/test`, `/build` 슬래시 커맨드는 위를 래핑하면서 출력을 핵심만 추려서 보여줍니다.
+
+> SDK 주의: 루트 `global.json` 이 .NET 9 SDK 를 요구합니다. PATH 의 `dotnet` 이 구버전이면 (예: `/usr/local/share/dotnet` 의 7.x) `DOTNET_ROOT=$HOME/.dotnet $HOME/.dotnet/dotnet ...` 으로 실행하세요.
 
 ## 작업 워크플로 (코드 수정 = worktree 격리 필수)
 
