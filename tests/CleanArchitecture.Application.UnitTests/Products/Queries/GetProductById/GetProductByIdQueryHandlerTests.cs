@@ -8,6 +8,7 @@ using CleanArchitecture.Application.Products.Queries.GetProductById;
 using CleanArchitecture.Application.UnitTests.TestDoubles;
 using CleanArchitecture.Domain.Entities;
 using CleanArchitecture.Domain.ValueObjects;
+using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
 namespace CleanArchitecture.Application.UnitTests.Products.Queries.GetProductById
@@ -18,7 +19,7 @@ namespace CleanArchitecture.Application.UnitTests.Products.Queries.GetProductByI
 
         public GetProductByIdQueryHandlerTests()
         {
-            var config = new MapperConfiguration(cfg => cfg.AddProfile<MappingProfile>());
+            var config = new MapperConfiguration(cfg => cfg.AddProfile<MappingProfile>(), NullLoggerFactory.Instance);
             _mapper = config.CreateMapper();
         }
 

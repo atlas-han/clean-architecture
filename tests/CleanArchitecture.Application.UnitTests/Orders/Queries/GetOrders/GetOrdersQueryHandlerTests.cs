@@ -7,6 +7,7 @@ using CleanArchitecture.Application.Orders.Queries.GetOrders;
 using CleanArchitecture.Application.UnitTests.TestDoubles;
 using CleanArchitecture.Domain.Entities;
 using CleanArchitecture.Domain.ValueObjects;
+using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
 namespace CleanArchitecture.Application.UnitTests.Orders.Queries.GetOrders
@@ -17,7 +18,7 @@ namespace CleanArchitecture.Application.UnitTests.Orders.Queries.GetOrders
 
         public GetOrdersQueryHandlerTests()
         {
-            var config = new MapperConfiguration(cfg => cfg.AddProfile<MappingProfile>());
+            var config = new MapperConfiguration(cfg => cfg.AddProfile<MappingProfile>(), NullLoggerFactory.Instance);
             _mapper = config.CreateMapper();
         }
 

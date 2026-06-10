@@ -21,9 +21,10 @@ namespace CleanArchitecture.Infrastructure
                 // No connection string configured → fall back to InMemory so dev/test
                 // environments (and the WebApplicationFactory-based integration tests)
                 // keep working without a real SQL Server. The InMemory provider treats
-                // BeginTransaction/Commit as no-ops, so BeginTransactionAsync would
-                // otherwise throw — suppress that warning here. The transactional
-                // handler's rollback guarantee only holds against a relational provider.
+                // BeginTransaction/Commit as no-ops, so the BeginTransactionAsync call
+                // inside ExecuteInTransactionAsync would otherwise throw — suppress that
+                // warning here. The transactional handler's rollback guarantee only
+                // holds against a relational provider.
                 services.AddDbContext<ApplicationDbContext>(options =>
                     options
                         .UseInMemoryDatabase("CleanArchitectureDb")

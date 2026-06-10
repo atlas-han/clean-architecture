@@ -15,6 +15,8 @@ namespace CleanArchitecture.Application.UnitTests.TestDoubles
         public DbSet<Product> Products => Set<Product>();
         public DbSet<Order> Orders => Set<Order>();
 
+        // Mirrors ApplicationDbContext.ExecuteInTransactionAsync — keep the two in sync
+        // if the contract's transaction semantics ever change.
         public async Task<TResult> ExecuteInTransactionAsync<TResult>(
             Func<CancellationToken, Task<TResult>> operation,
             CancellationToken cancellationToken)
