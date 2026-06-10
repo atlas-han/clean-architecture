@@ -154,6 +154,52 @@ namespace CleanArchitecture.Api.IntegrationTests
         }
 
         [Fact]
+        public async Task Confirm_ExistingOrder_Returns_204_And_StatusBecomesConfirmed()
+        {
+            var productId = await CreateProductAsync();
+            var orderPayload = new
+            {
+                customerName = "Frank",
+                items = new[] { new { productId, quantity = 1 } }
+            };
+            var createResp = await _client.PostAsJsonAsync("/api/orders", orderPayload);
+            var id = await ReadCreatedIdAsync(createResp);
+
+            var confirmResp = await _client.PostAsync($"/api/orders/{id}/confirm", null);
+            Assert.Equal(HttpStatusCode.NoContent, confirmResp.StatusCode);
+
+            var getResp = await _client.GetAsync($"/api/orders/{id}");
+            var dto = await getResp.Content.ReadFromJsonAsync<JsonElement>();
+            Assert.Equal(1, dto.GetProperty("status").GetInt32());
+        }
+
+        [Fact]
+        public async Task Confirm_UnknownId_Returns_404()
+        {
+            var resp = await _client.PostAsync($"/api/orders/{Guid.NewGuid()}/confirm", null);
+            Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
+        }
+
+        [Fact]
+        public async Task Confirm_CancelledOrder_Returns_400()
+        {
+            var productId = await CreateProductAsync();
+            var orderPayload = new
+            {
+                customerName = "Grace",
+                items = new[] { new { productId, quantity = 1 } }
+            };
+            var createResp = await _client.PostAsJsonAsync("/api/orders", orderPayload);
+            var id = await ReadCreatedIdAsync(createResp);
+
+            var cancelResp = await _client.PostAsync($"/api/orders/{id}/cancel", null);
+            Assert.Equal(HttpStatusCode.NoContent, cancelResp.StatusCode);
+
+            var confirmResp = await _client.PostAsync($"/api/orders/{id}/confirm", null);
+            Assert.Equal(HttpStatusCode.BadRequest, confirmResp.StatusCode);
+        }
+
+        [Fact]
         public async Task Place_DecrementsStockAndCreatesOrder_InOneTransaction()
         {
             var productId = await CreateProductAsync(price: 40m, stock: 10);

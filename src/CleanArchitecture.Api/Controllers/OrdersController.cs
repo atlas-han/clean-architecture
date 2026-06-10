@@ -3,6 +3,7 @@ using System.Threading.Tasks;
 using CleanArchitecture.Application.Common.Messaging;
 using CleanArchitecture.Application.Common.Models;
 using CleanArchitecture.Application.Orders.Commands.CancelOrder;
+using CleanArchitecture.Application.Orders.Commands.ConfirmOrder;
 using CleanArchitecture.Application.Orders.Commands.CreateOrder;
 using CleanArchitecture.Application.Orders.Commands.PlaceOrder;
 using CleanArchitecture.Application.Orders.Queries.Dtos;
@@ -54,6 +55,13 @@ namespace CleanArchitecture.Api.Controllers
         public async Task<IActionResult> Cancel(Guid id)
         {
             await Sender.Send(new CancelOrderCommand(id));
+            return NoContent();
+        }
+
+        [HttpPost("{id:guid}/confirm")]
+        public async Task<IActionResult> Confirm(Guid id)
+        {
+            await Sender.Send(new ConfirmOrderCommand(id));
             return NoContent();
         }
     }
