@@ -80,6 +80,16 @@ namespace CleanArchitecture.Api.IntegrationTests
                 ["spanID"] = "span-9",
                 ["requestUUID"] = "req-9"
             });
+            // Hosting/Kestrel scope noise — duplicates the contract fields and must be dropped.
+            using var hostingScope = scopeProvider.Push(new Dictionary<string, object?>
+            {
+                ["RequestId"] = "0HNM:00000001",
+                ["RequestPath"] = "/health",
+                ["TraceId"] = "trace-9",
+                ["SpanId"] = "span-9",
+                ["ParentId"] = "0000000000000000",
+                ["ConnectionId"] = "0HNM"
+            });
 
             var entry = new LogEntry<IReadOnlyList<KeyValuePair<string, object?>>>(
                 LogLevel.Information,
@@ -98,6 +108,13 @@ namespace CleanArchitecture.Api.IntegrationTests
             Assert.Equal("trace-9", root.GetProperty("traceID").GetString());
             Assert.Equal("span-9", root.GetProperty("spanID").GetString());
             Assert.Equal("req-9", root.GetProperty("requestUUID").GetString());
+
+            Assert.False(root.TryGetProperty("RequestId", out _));
+            Assert.False(root.TryGetProperty("RequestPath", out _));
+            Assert.False(root.TryGetProperty("TraceId", out _));
+            Assert.False(root.TryGetProperty("SpanId", out _));
+            Assert.False(root.TryGetProperty("ParentId", out _));
+            Assert.False(root.TryGetProperty("ConnectionId", out _));
         }
 
         [Fact]

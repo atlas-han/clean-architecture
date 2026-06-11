@@ -19,6 +19,18 @@ namespace CleanArchitecture.Api.Logging
 
         private const string OriginalFormatKey = "{OriginalFormat}";
 
+        // ASP.NET hosting/Kestrel scopes inject these PascalCase keys on every request log;
+        // they duplicate the §14.3 contract fields (traceID/spanID/requestUUID) as noise.
+        private static readonly HashSet<string> ExcludedScopeKeys = new HashSet<string>(StringComparer.Ordinal)
+        {
+            "RequestPath",
+            "RequestId",
+            "TraceId",
+            "SpanId",
+            "ParentId",
+            "ConnectionId"
+        };
+
         private readonly string _serviceName;
 
         public JsonConsoleFormatter(IHostEnvironment environment) : base(FormatterName)
@@ -69,7 +81,7 @@ namespace CleanArchitecture.Api.Logging
                 foreach (var kvp in kvps)
                 {
                     if (kvp.Key == OriginalFormatKey) continue;
-                    if (kvp.Key == "RequestPath") continue;
+                    if (ExcludedScopeKeys.Contains(kvp.Key)) continue;
                     target[kvp.Key] = kvp.Value;
                 }
             }
