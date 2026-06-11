@@ -2,22 +2,28 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
-using System.Text;
 using System.Text.Json;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Logging.Console;
 
 namespace CleanArchitecture.Api.Logging
 {
+    // Emits the unified API server logging spec (API design guide §14.3).
+    // Field names and casing are a fixed contract with the log pipeline (ELK/CloudWatch):
+    // keys are written verbatim — do NOT re-case them here.
     public class JsonConsoleFormatter : ConsoleFormatter
     {
-        public const string FormatterName = "snake_json";
+        public const string FormatterName = "unified_json";
 
         private const string OriginalFormatKey = "{OriginalFormat}";
 
-        public JsonConsoleFormatter() : base(FormatterName)
+        private readonly string _serviceName;
+
+        public JsonConsoleFormatter(IHostEnvironment environment) : base(FormatterName)
         {
+            _serviceName = environment.ApplicationName;
         }
 
         public override void Write<TState>(in LogEntry<TState> logEntry, IExternalScopeProvider? scopeProvider, TextWriter textWriter)
@@ -26,6 +32,7 @@ namespace CleanArchitecture.Api.Logging
 
             payload["timestamp"] = DateTimeOffset.UtcNow.ToString("o", CultureInfo.InvariantCulture);
             payload["level"] = MapLevel(logEntry.LogLevel);
+            payload["service"] = _serviceName;
             payload["category"] = logEntry.Category;
 
             if (scopeProvider != null)
@@ -43,7 +50,12 @@ namespace CleanArchitecture.Api.Logging
 
             if (logEntry.Exception != null)
             {
-                payload["exception"] = logEntry.Exception.ToString();
+                payload["exception"] = new Dictionary<string, object?>(StringComparer.Ordinal)
+                {
+                    ["type"] = logEntry.Exception.GetType().FullName,
+                    ["message"] = logEntry.Exception.Message,
+                    ["stackTrace"] = logEntry.Exception.StackTrace
+                };
             }
 
             var json = JsonSerializer.Serialize(payload);
@@ -58,7 +70,7 @@ namespace CleanArchitecture.Api.Logging
                 {
                     if (kvp.Key == OriginalFormatKey) continue;
                     if (kvp.Key == "RequestPath") continue;
-                    target[ToSnakeCase(kvp.Key)] = kvp.Value;
+                    target[kvp.Key] = kvp.Value;
                 }
             }
         }
@@ -70,7 +82,7 @@ namespace CleanArchitecture.Api.Logging
                 foreach (var kvp in kvps)
                 {
                     if (kvp.Key == OriginalFormatKey) continue;
-                    target[ToSnakeCase(kvp.Key)] = kvp.Value;
+                    target[kvp.Key] = kvp.Value;
                 }
             }
         }
@@ -79,48 +91,14 @@ namespace CleanArchitecture.Api.Logging
         {
             return level switch
             {
-                LogLevel.Trace => "trace",
-                LogLevel.Debug => "debug",
-                LogLevel.Information => "info",
-                LogLevel.Warning => "warning",
-                LogLevel.Error => "error",
-                LogLevel.Critical => "critical",
-                _ => "none"
+                LogLevel.Trace => "TRACE",
+                LogLevel.Debug => "DEBUG",
+                LogLevel.Information => "INFO",
+                LogLevel.Warning => "WARNING",
+                LogLevel.Error => "ERROR",
+                LogLevel.Critical => "CRITICAL",
+                _ => "NONE"
             };
-        }
-
-        public static string ToSnakeCase(string value)
-        {
-            if (string.IsNullOrEmpty(value)) return value;
-            if (value.IndexOf('_') >= 0 && !ContainsUpper(value)) return value.ToLowerInvariant();
-
-            var builder = new StringBuilder(value.Length + 8);
-            for (var i = 0; i < value.Length; i++)
-            {
-                var c = value[i];
-                if (char.IsUpper(c))
-                {
-                    if (i > 0 && value[i - 1] != '_' && (char.IsLower(value[i - 1]) || (i + 1 < value.Length && char.IsLower(value[i + 1]))))
-                    {
-                        builder.Append('_');
-                    }
-                    builder.Append(char.ToLowerInvariant(c));
-                }
-                else
-                {
-                    builder.Append(c);
-                }
-            }
-            return builder.ToString();
-        }
-
-        private static bool ContainsUpper(string value)
-        {
-            for (var i = 0; i < value.Length; i++)
-            {
-                if (char.IsUpper(value[i])) return true;
-            }
-            return false;
         }
     }
 }

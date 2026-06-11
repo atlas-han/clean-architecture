@@ -5,10 +5,14 @@ using System.IO;
 using System.Text;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
 namespace CleanArchitecture.Api.Middleware
 {
+    // Emits one access log per HTTP request using the unified API server logging
+    // spec (API design guide §14.3/§14.4). Field names are a fixed contract with
+    // the log pipeline — keep casing exactly as-is (traceID, requestUUID, latencyMs...).
     public class RequestLoggingMiddleware
     {
         private const int MaxBodyLength = 4096;
@@ -26,35 +30,52 @@ namespace CleanArchitecture.Api.Middleware
 
         private readonly RequestDelegate _next;
         private readonly ILogger<RequestLoggingMiddleware> _logger;
+        private readonly IHostEnvironment _environment;
 
-        public RequestLoggingMiddleware(RequestDelegate next, ILogger<RequestLoggingMiddleware> logger)
+        public RequestLoggingMiddleware(RequestDelegate next, ILogger<RequestLoggingMiddleware> logger, IHostEnvironment environment)
         {
             _next = next;
             _logger = logger;
+            _environment = environment;
         }
 
         public async Task InvokeAsync(HttpContext context)
         {
             var stopwatch = Stopwatch.StartNew();
-            var requestId = ResolveRequestId(context);
+            var requestUuid = ResolveRequestUuid(context);
             var traceId = ResolveTraceId(context);
+            var spanId = Activity.Current?.SpanId.ToHexString() ?? string.Empty;
 
-            context.Response.Headers[RequestIdHeader] = requestId;
+            context.Response.Headers[RequestIdHeader] = requestUuid;
 
-            var path = context.Request.Path.HasValue ? context.Request.Path.Value! : string.Empty;
-            var queryString = context.Request.QueryString.HasValue ? context.Request.QueryString.Value! : string.Empty;
+            var pathname = context.Request.Path.Value
+                + (context.Request.QueryString.HasValue ? context.Request.QueryString.Value : string.Empty);
             var method = context.Request.Method;
+            var host = context.Request.Host.Value;
+            var remoteAddr = context.Connection.RemoteIpAddress is { } remoteIp
+                ? remoteIp + ":" + context.Connection.RemotePort
+                : string.Empty;
+            // §14.6: request/response bodies are off by default; captured only on debug paths.
+            var captureBodies = _logger.IsEnabled(LogLevel.Debug);
+            var requestBody = captureBodies ? await ReadRequestBodyAsync(context.Request) : null;
 
-            var requestBody = await ReadRequestBodyAsync(context.Request);
+            // Chunked requests carry no Content-Length; the buffered stream (debug path) knows the size.
+            var reqBodyBytes = context.Request.ContentLength
+                ?? (context.Request.Body.CanSeek ? context.Request.Body.Length : 0);
 
-            var captureResponse = _logger.IsEnabled(LogLevel.Debug);
-            var originalBodyStream = context.Response.Body;
-            MemoryStream? responseBuffer = null;
-            if (captureResponse)
+            // BeginScope keys = §14.3 log field names — every log emitted while handling
+            // this request (handlers, filters, this access log) carries them automatically.
+            using var scope = _logger.BeginScope(new Dictionary<string, object?>
             {
-                responseBuffer = new MemoryStream();
-                context.Response.Body = responseBuffer;
-            }
+                ["traceID"] = traceId,
+                ["spanID"] = spanId,
+                ["requestUUID"] = requestUuid
+            });
+
+            // Response stream is wrapped so resBodyBytes is exact (§14.4).
+            var originalBodyStream = context.Response.Body;
+            await using var responseBuffer = new MemoryStream();
+            context.Response.Body = responseBuffer;
 
             Exception? caught = null;
             try
@@ -71,53 +92,76 @@ namespace CleanArchitecture.Api.Middleware
                 stopwatch.Stop();
 
                 string? responseBody = null;
-                if (captureResponse && responseBuffer != null)
+                var resBodyBytes = responseBuffer.Length;
+                try
                 {
-                    try
+                    if (captureBodies)
                     {
                         responseBuffer.Position = 0;
                         using (var reader = new StreamReader(responseBuffer, Encoding.UTF8, detectEncodingFromByteOrderMarks: false, bufferSize: 1024, leaveOpen: true))
                         {
                             responseBody = Truncate(await reader.ReadToEndAsync(), MaxBodyLength);
                         }
+                    }
+
+                    // On an escaping exception, drop the partial body — the outer exception
+                    // handler owns the response; flushing it first would corrupt the output.
+                    if (caught == null)
+                    {
                         responseBuffer.Position = 0;
                         await responseBuffer.CopyToAsync(originalBodyStream);
                     }
-                    finally
-                    {
-                        context.Response.Body = originalBodyStream;
-                        responseBuffer.Dispose();
-                    }
+                }
+                finally
+                {
+                    context.Response.Body = originalBodyStream;
                 }
 
                 var statusCode = context.Response.StatusCode;
                 var level = DetermineLevel(statusCode, caught);
+                var latencyMs = stopwatch.Elapsed.TotalMilliseconds;
 
                 var state = new List<KeyValuePair<string, object?>>
                 {
-                    new KeyValuePair<string, object?>("Timestamp", DateTimeOffset.UtcNow.ToString("o")),
-                    new KeyValuePair<string, object?>("TraceId", traceId),
-                    new KeyValuePair<string, object?>("RequestId", requestId),
-                    new KeyValuePair<string, object?>("Method", method),
-                    new KeyValuePair<string, object?>("Path", path),
-                    new KeyValuePair<string, object?>("QueryString", queryString),
-                    new KeyValuePair<string, object?>("StatusCode", statusCode),
-                    new KeyValuePair<string, object?>("ProcessingTimeMs", stopwatch.Elapsed.TotalMilliseconds),
-                    new KeyValuePair<string, object?>("RequestBody", requestBody)
+                    new KeyValuePair<string, object?>("apienvironment", _environment.EnvironmentName),
+                    new KeyValuePair<string, object?>("requestUUID", requestUuid),
+                    new KeyValuePair<string, object?>("traceID", traceId),
+                    new KeyValuePair<string, object?>("spanID", spanId),
+                    new KeyValuePair<string, object?>("endpointHandler", context.GetEndpoint()?.DisplayName ?? string.Empty),
+                    new KeyValuePair<string, object?>("method", method),
+                    new KeyValuePair<string, object?>("pathname", pathname),
+                    new KeyValuePair<string, object?>("host", host),
+                    new KeyValuePair<string, object?>("remoteAddr", remoteAddr),
+                    new KeyValuePair<string, object?>("serverHostname", Environment.MachineName),
+                    new KeyValuePair<string, object?>("statusCode", statusCode),
+                    new KeyValuePair<string, object?>("latencyMs", latencyMs),
+                    new KeyValuePair<string, object?>("reqBodyBytes", reqBodyBytes),
+                    new KeyValuePair<string, object?>("resBodyBytes", resBodyBytes)
                 };
 
-                if (captureResponse)
+                if (caught != null)
                 {
-                    state.Add(new KeyValuePair<string, object?>("ResponseBody", responseBody));
+                    state.Add(new KeyValuePair<string, object?>("error_type", caught.GetType().Name));
+                    state.Add(new KeyValuePair<string, object?>("error_location", ResolveErrorLocation(caught)));
                 }
 
-                _logger.Log(level, default, state, caught, FormatRequest);
+                if (captureBodies)
+                {
+                    state.Add(new KeyValuePair<string, object?>("requestBody", requestBody));
+                    state.Add(new KeyValuePair<string, object?>("responseBody", responseBody));
+                }
+
+                var message = FormatMessage(method, pathname, statusCode, latencyMs);
+                _logger.Log(level, default, state, caught, (_, _) => message);
             }
         }
 
-        private static string FormatRequest(IReadOnlyList<KeyValuePair<string, object?>> state, Exception? exception)
+        private static string FormatMessage(string method, string pathname, int statusCode, double latencyMs)
         {
-            return "request_handled";
+            return string.Format(
+                System.Globalization.CultureInfo.InvariantCulture,
+                "HTTP {0} {1} -> {2} ({3:0.0}ms)",
+                method, pathname, statusCode, latencyMs);
         }
 
         private static LogLevel DetermineLevel(int statusCode, Exception? exception)
@@ -128,7 +172,7 @@ namespace CleanArchitecture.Api.Middleware
             return LogLevel.Information;
         }
 
-        private static string ResolveRequestId(HttpContext context)
+        private static string ResolveRequestUuid(HttpContext context)
         {
             foreach (var name in RequestIdHeaderCandidates)
             {
@@ -152,6 +196,23 @@ namespace CleanArchitecture.Api.Middleware
                 return activityTraceId!;
             }
             return context.TraceIdentifier;
+        }
+
+        private static string? ResolveErrorLocation(Exception exception)
+        {
+            var trace = new StackTrace(exception, fNeedFileInfo: true);
+            for (var i = 0; i < trace.FrameCount; i++)
+            {
+                var frame = trace.GetFrame(i);
+                var file = frame?.GetFileName();
+                if (!string.IsNullOrEmpty(file))
+                {
+                    return Path.GetFileName(file) + ":" + frame!.GetFileLineNumber();
+                }
+            }
+
+            var method = trace.GetFrame(0)?.GetMethod();
+            return method == null ? null : method.DeclaringType?.Name + "." + method.Name;
         }
 
         private static async Task<string?> ReadRequestBodyAsync(HttpRequest request)

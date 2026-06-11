@@ -6,10 +6,11 @@ using Microsoft.Extensions.Logging;
 
 namespace CleanArchitecture.Api.IntegrationTests.Infrastructure
 {
-    public sealed class CapturingLoggerProvider : ILoggerProvider
+    public sealed class CapturingLoggerProvider : ILoggerProvider, ISupportExternalScope
     {
         private readonly ConcurrentQueue<CapturedLogEntry> _entries = new ConcurrentQueue<CapturedLogEntry>();
         private readonly LogLevel _minLevel;
+        private IExternalScopeProvider _scopeProvider = new LoggerExternalScopeProvider();
 
         public CapturingLoggerProvider(LogLevel minLevel)
         {
@@ -25,7 +26,9 @@ namespace CleanArchitecture.Api.IntegrationTests.Infrastructure
             }
         }
 
-        public ILogger CreateLogger(string categoryName) => new CapturingLogger(categoryName, _minLevel, _entries);
+        public ILogger CreateLogger(string categoryName) => new CapturingLogger(categoryName, _minLevel, _entries, () => _scopeProvider);
+
+        public void SetScopeProvider(IExternalScopeProvider scopeProvider) => _scopeProvider = scopeProvider;
 
         public void Dispose()
         {
@@ -36,15 +39,17 @@ namespace CleanArchitecture.Api.IntegrationTests.Infrastructure
             private readonly string _category;
             private readonly LogLevel _minLevel;
             private readonly ConcurrentQueue<CapturedLogEntry> _sink;
+            private readonly Func<IExternalScopeProvider> _scopeProvider;
 
-            public CapturingLogger(string category, LogLevel minLevel, ConcurrentQueue<CapturedLogEntry> sink)
+            public CapturingLogger(string category, LogLevel minLevel, ConcurrentQueue<CapturedLogEntry> sink, Func<IExternalScopeProvider> scopeProvider)
             {
                 _category = category;
                 _minLevel = minLevel;
                 _sink = sink;
+                _scopeProvider = scopeProvider;
             }
 
-            public IDisposable BeginScope<TState>(TState state) where TState : notnull => NullScope.Instance;
+            public IDisposable BeginScope<TState>(TState state) where TState : notnull => _scopeProvider().Push(state);
 
             public bool IsEnabled(LogLevel logLevel) => logLevel >= _minLevel;
 
@@ -53,22 +58,22 @@ namespace CleanArchitecture.Api.IntegrationTests.Infrastructure
                 if (!IsEnabled(logLevel)) return;
 
                 var values = new Dictionary<string, object?>(StringComparer.Ordinal);
-                if (state is IEnumerable<KeyValuePair<string, object?>> kvps)
-                {
-                    foreach (var kvp in kvps)
-                    {
-                        if (kvp.Key == "{OriginalFormat}") continue;
-                        values[kvp.Key] = kvp.Value;
-                    }
-                }
+                _scopeProvider().ForEachScope((scope, target) => MergeValues(scope, target), values);
+                MergeValues(state, values);
 
                 _sink.Enqueue(new CapturedLogEntry(_category, logLevel, formatter(state, exception), values, exception));
             }
 
-            private sealed class NullScope : IDisposable
+            private static void MergeValues(object? source, Dictionary<string, object?> target)
             {
-                public static readonly NullScope Instance = new NullScope();
-                public void Dispose() { }
+                if (source is IEnumerable<KeyValuePair<string, object?>> kvps)
+                {
+                    foreach (var kvp in kvps)
+                    {
+                        if (kvp.Key == "{OriginalFormat}") continue;
+                        target[kvp.Key] = kvp.Value;
+                    }
+                }
             }
         }
     }

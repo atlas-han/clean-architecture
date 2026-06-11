@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
 using CleanArchitecture.Api.Logging;
+using Microsoft.Extensions.FileProviders;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Logging.Console;
@@ -12,17 +14,23 @@ namespace CleanArchitecture.Api.IntegrationTests
 {
     public class JsonConsoleFormatterTests
     {
-        [Fact]
-        public void Write_EmitsSnakeCaseJson_WithBaseFields()
+        private static JsonConsoleFormatter CreateFormatter()
         {
-            var formatter = new JsonConsoleFormatter();
+            return new JsonConsoleFormatter(new FakeHostEnvironment { ApplicationName = "test-api" });
+        }
+
+        [Fact]
+        public void Write_EmitsContractFieldNamesVerbatim()
+        {
+            var formatter = CreateFormatter();
             var state = new List<KeyValuePair<string, object?>>
             {
-                new KeyValuePair<string, object?>("RequestId", "req-1"),
-                new KeyValuePair<string, object?>("TraceId", "trace-1"),
-                new KeyValuePair<string, object?>("ProcessingTimeMs", 12.5d),
-                new KeyValuePair<string, object?>("QueryString", "?x=1"),
-                new KeyValuePair<string, object?>("StatusCode", 200)
+                new KeyValuePair<string, object?>("requestUUID", "req-1"),
+                new KeyValuePair<string, object?>("traceID", "trace-1"),
+                new KeyValuePair<string, object?>("latencyMs", 12.5d),
+                new KeyValuePair<string, object?>("pathname", "/health?x=1"),
+                new KeyValuePair<string, object?>("statusCode", 200),
+                new KeyValuePair<string, object?>("error_type", "ValidationError")
             };
 
             var entry = new LogEntry<IReadOnlyList<KeyValuePair<string, object?>>>(
@@ -31,7 +39,7 @@ namespace CleanArchitecture.Api.IntegrationTests
                 eventId: default,
                 state: state,
                 exception: null,
-                formatter: (_, _) => "request_handled");
+                formatter: (_, _) => "HTTP GET /health?x=1 -> 200 (12.5ms)");
 
             var writer = new StringWriter();
             formatter.Write(in entry, null, writer);
@@ -42,42 +50,104 @@ namespace CleanArchitecture.Api.IntegrationTests
             using var doc = JsonDocument.Parse(output);
             var root = doc.RootElement;
 
-            Assert.Equal("info", root.GetProperty("level").GetString());
+            Assert.Equal("INFO", root.GetProperty("level").GetString());
+            Assert.Equal("test-api", root.GetProperty("service").GetString());
             Assert.Equal("Some.Category", root.GetProperty("category").GetString());
-            Assert.Equal("request_handled", root.GetProperty("message").GetString());
+            Assert.Equal("HTTP GET /health?x=1 -> 200 (12.5ms)", root.GetProperty("message").GetString());
             Assert.True(root.TryGetProperty("timestamp", out _));
 
-            Assert.Equal("req-1", root.GetProperty("request_id").GetString());
-            Assert.Equal("trace-1", root.GetProperty("trace_id").GetString());
-            Assert.Equal(12.5d, root.GetProperty("processing_time_ms").GetDouble());
-            Assert.Equal("?x=1", root.GetProperty("query_string").GetString());
-            Assert.Equal(200, root.GetProperty("status_code").GetInt32());
+            // Keys pass through verbatim — the §14.3 spec casing is the pipeline contract.
+            Assert.Equal("req-1", root.GetProperty("requestUUID").GetString());
+            Assert.Equal("trace-1", root.GetProperty("traceID").GetString());
+            Assert.Equal(12.5d, root.GetProperty("latencyMs").GetDouble());
+            Assert.Equal("/health?x=1", root.GetProperty("pathname").GetString());
+            Assert.Equal(200, root.GetProperty("statusCode").GetInt32());
+            Assert.Equal("ValidationError", root.GetProperty("error_type").GetString());
 
-            Assert.False(root.TryGetProperty("RequestId", out _));
-            Assert.False(root.TryGetProperty("ProcessingTimeMs", out _));
+            Assert.False(root.TryGetProperty("request_uuid", out _));
+            Assert.False(root.TryGetProperty("trace_id", out _));
+            Assert.False(root.TryGetProperty("latency_ms", out _));
         }
 
         [Fact]
-        public void Write_MapsLogLevelsCorrectly()
+        public void Write_MergesScopeKeysVerbatim()
         {
-            Assert.Equal("debug", RenderLevel(LogLevel.Debug));
-            Assert.Equal("info", RenderLevel(LogLevel.Information));
-            Assert.Equal("warning", RenderLevel(LogLevel.Warning));
-            Assert.Equal("error", RenderLevel(LogLevel.Error));
+            var formatter = CreateFormatter();
+            var scopeProvider = new LoggerExternalScopeProvider();
+            using var scope = scopeProvider.Push(new Dictionary<string, object?>
+            {
+                ["traceID"] = "trace-9",
+                ["spanID"] = "span-9",
+                ["requestUUID"] = "req-9"
+            });
+
+            var entry = new LogEntry<IReadOnlyList<KeyValuePair<string, object?>>>(
+                LogLevel.Information,
+                "Some.Category",
+                eventId: default,
+                state: new List<KeyValuePair<string, object?>>(),
+                exception: null,
+                formatter: (_, _) => "in-request log");
+
+            var writer = new StringWriter();
+            formatter.Write(in entry, scopeProvider, writer);
+
+            using var doc = JsonDocument.Parse(writer.ToString().Trim());
+            var root = doc.RootElement;
+
+            Assert.Equal("trace-9", root.GetProperty("traceID").GetString());
+            Assert.Equal("span-9", root.GetProperty("spanID").GetString());
+            Assert.Equal("req-9", root.GetProperty("requestUUID").GetString());
         }
 
         [Fact]
-        public void ToSnakeCase_HandlesCamelAndPascal()
+        public void Write_MapsLogLevelsToSpecNames()
         {
-            Assert.Equal("request_id", JsonConsoleFormatter.ToSnakeCase("RequestId"));
-            Assert.Equal("processing_time_ms", JsonConsoleFormatter.ToSnakeCase("ProcessingTimeMs"));
-            Assert.Equal("trace_id", JsonConsoleFormatter.ToSnakeCase("traceId"));
-            Assert.Equal("path", JsonConsoleFormatter.ToSnakeCase("Path"));
+            Assert.Equal("TRACE", RenderLevel(LogLevel.Trace));
+            Assert.Equal("DEBUG", RenderLevel(LogLevel.Debug));
+            Assert.Equal("INFO", RenderLevel(LogLevel.Information));
+            Assert.Equal("WARNING", RenderLevel(LogLevel.Warning));
+            Assert.Equal("ERROR", RenderLevel(LogLevel.Error));
+            Assert.Equal("CRITICAL", RenderLevel(LogLevel.Critical));
+        }
+
+        [Fact]
+        public void Write_SerializesExceptionAsStructuredObject()
+        {
+            var formatter = CreateFormatter();
+            Exception thrown;
+            try
+            {
+                throw new InvalidOperationException("boom");
+            }
+            catch (Exception ex)
+            {
+                thrown = ex;
+            }
+
+            var entry = new LogEntry<IReadOnlyList<KeyValuePair<string, object?>>>(
+                LogLevel.Error,
+                "Some.Category",
+                eventId: default,
+                state: new List<KeyValuePair<string, object?>>(),
+                exception: thrown,
+                formatter: (_, _) => "failed");
+
+            var writer = new StringWriter();
+            formatter.Write(in entry, null, writer);
+
+            using var doc = JsonDocument.Parse(writer.ToString().Trim());
+            var exception = doc.RootElement.GetProperty("exception");
+
+            Assert.Equal(JsonValueKind.Object, exception.ValueKind);
+            Assert.Equal("System.InvalidOperationException", exception.GetProperty("type").GetString());
+            Assert.Equal("boom", exception.GetProperty("message").GetString());
+            Assert.False(string.IsNullOrEmpty(exception.GetProperty("stackTrace").GetString()));
         }
 
         private static string RenderLevel(LogLevel level)
         {
-            var formatter = new JsonConsoleFormatter();
+            var formatter = CreateFormatter();
             var state = new List<KeyValuePair<string, object?>>();
             var entry = new LogEntry<IReadOnlyList<KeyValuePair<string, object?>>>(
                 level, "Cat", default, state, null, (_, _) => "msg");
@@ -85,6 +155,14 @@ namespace CleanArchitecture.Api.IntegrationTests
             formatter.Write(in entry, null, writer);
             using var doc = JsonDocument.Parse(writer.ToString().Trim());
             return doc.RootElement.GetProperty("level").GetString()!;
+        }
+
+        private sealed class FakeHostEnvironment : IHostEnvironment
+        {
+            public string ApplicationName { get; set; } = "test-api";
+            public string EnvironmentName { get; set; } = "Development";
+            public string ContentRootPath { get; set; } = ".";
+            public IFileProvider ContentRootFileProvider { get; set; } = new NullFileProvider();
         }
     }
 }
