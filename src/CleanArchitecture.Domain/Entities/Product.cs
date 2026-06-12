@@ -1,4 +1,5 @@
 using CleanArchitecture.Domain.Common;
+using CleanArchitecture.Domain.Events;
 using CleanArchitecture.Domain.Exceptions;
 using CleanArchitecture.Domain.ValueObjects;
 
@@ -19,6 +20,8 @@ namespace CleanArchitecture.Domain.Entities
             ChangeDescription(description);
             ChangePrice(price);
             AdjustStock(stock);
+
+            RaiseDomainEvent(new ProductRegisteredDomainEvent(Id, Name, Description, Price.Amount, Stock));
         }
 
         public void Rename(string name)

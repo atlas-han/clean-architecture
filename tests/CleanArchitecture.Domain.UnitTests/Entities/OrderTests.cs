@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using CleanArchitecture.Domain.Entities;
 using CleanArchitecture.Domain.Enums;
+using CleanArchitecture.Domain.Events;
 using CleanArchitecture.Domain.Exceptions;
 using CleanArchitecture.Domain.ValueObjects;
 using Xunit;
@@ -148,6 +149,46 @@ namespace CleanArchitecture.Domain.UnitTests.Entities
 
             Assert.Throws<DomainException>(
                 () => order.AddItem(Item()));
+        }
+
+        [Fact]
+        public void Constructor_RaisesOrderPlacedDomainEvent()
+        {
+            var productId = Guid.NewGuid();
+            var items = new List<OrderItem> { new OrderItem(productId, "Sample", new Money(100m), 2) };
+
+            var order = new Order("Alice", items);
+
+            var placed = Assert.IsType<OrderPlacedDomainEvent>(Assert.Single(order.DomainEvents));
+            Assert.Equal(order.Id, placed.OrderId);
+            Assert.Equal("Alice", placed.CustomerName);
+            Assert.Equal(200m, placed.TotalAmount);
+            var line = Assert.Single(placed.Items);
+            Assert.Equal(productId, line.ProductId);
+            Assert.Equal("Sample", line.ProductName);
+            Assert.Equal(100m, line.UnitPrice);
+            Assert.Equal(2, line.Quantity);
+        }
+
+        [Fact]
+        public void Cancel_DoesNotRaiseAdditionalDomainEvent()
+        {
+            var order = new Order("Alice", new[] { Item() });
+
+            order.Cancel();
+
+            // Only creation publishes; lifecycle transitions are intentionally out of outbox scope.
+            Assert.IsType<OrderPlacedDomainEvent>(Assert.Single(order.DomainEvents));
+        }
+
+        [Fact]
+        public void ClearDomainEvents_RemovesPendingEvents()
+        {
+            var order = new Order("Alice", new[] { Item() });
+
+            order.ClearDomainEvents();
+
+            Assert.Empty(order.DomainEvents);
         }
     }
 }

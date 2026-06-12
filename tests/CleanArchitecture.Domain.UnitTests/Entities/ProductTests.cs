@@ -1,5 +1,6 @@
 using System;
 using CleanArchitecture.Domain.Entities;
+using CleanArchitecture.Domain.Events;
 using CleanArchitecture.Domain.Exceptions;
 using CleanArchitecture.Domain.ValueObjects;
 using Xunit;
@@ -127,6 +128,30 @@ namespace CleanArchitecture.Domain.UnitTests.Entities
 
             Assert.Equal(created, product.CreatedAt);
             Assert.Equal(updated, product.UpdatedAt);
+        }
+
+        [Fact]
+        public void Constructor_RaisesProductRegisteredDomainEvent()
+        {
+            var product = new Product("Keyboard", "Mechanical", new Money(129000m), 50);
+
+            var registered = Assert.IsType<ProductRegisteredDomainEvent>(Assert.Single(product.DomainEvents));
+            Assert.Equal(product.Id, registered.ProductId);
+            Assert.Equal("Keyboard", registered.Name);
+            Assert.Equal("Mechanical", registered.Description);
+            Assert.Equal(129000m, registered.Price);
+            Assert.Equal(50, registered.Stock);
+        }
+
+        [Fact]
+        public void Rename_DoesNotRaiseAdditionalDomainEvent()
+        {
+            var product = new Product("Old", "desc", new Money(100m), 10);
+
+            product.Rename("New");
+
+            // Only registration (creation) publishes; later mutations are out of outbox scope.
+            Assert.IsType<ProductRegisteredDomainEvent>(Assert.Single(product.DomainEvents));
         }
     }
 }

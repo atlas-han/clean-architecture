@@ -15,6 +15,10 @@ namespace CleanArchitecture.Api.IntegrationTests.Infrastructure
             // the cache connects lazily and these tests never touch it (abortConnect=false keeps the
             // unused multiplexer from throwing on the absent server).
             builder.UseSetting("ConnectionStrings:Redis", "localhost:6379,abortConnect=false");
+            // Likewise the outbox producer requires Kafka:BootstrapServers in Production; supply one
+            // so the host boots. The Kafka producer connects lazily and these tests never enqueue an
+            // event, so the absent broker is never contacted.
+            builder.UseSetting("Kafka:BootstrapServers", "localhost:9092");
             builder.ConfigureServices(services =>
             {
                 services.AddControllers()

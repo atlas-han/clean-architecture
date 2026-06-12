@@ -60,8 +60,12 @@ namespace CleanArchitecture.Api.IntegrationTests
         {
             var services = new ServiceCollection();
 
+            // Kafka is also required in Production (separate guard); supply it so this test isolates
+            // the Redis behaviour rather than tripping the Kafka guard.
             var ex = Record.Exception(() => services.AddInfrastructure(
-                Config(("ConnectionStrings:Redis", "localhost:6379,abortConnect=false")),
+                Config(
+                    ("ConnectionStrings:Redis", "localhost:6379,abortConnect=false"),
+                    ("Kafka:BootstrapServers", "localhost:9092")),
                 Env(Environments.Production)));
 
             Assert.Null(ex);

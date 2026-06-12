@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Linq;
 using CleanArchitecture.Domain.Common;
 using CleanArchitecture.Domain.Enums;
+using CleanArchitecture.Domain.Events;
 using CleanArchitecture.Domain.Exceptions;
 using CleanArchitecture.Domain.ValueObjects;
 
@@ -41,6 +42,12 @@ namespace CleanArchitecture.Domain.Entities
 
             if (_items.Count == 0)
                 throw new DomainException("Order must have at least one item.");
+
+            RaiseDomainEvent(new OrderPlacedDomainEvent(
+                Id,
+                CustomerName,
+                TotalAmount.Amount,
+                _items.Select(i => new OrderPlacedLine(i.ProductId, i.ProductName, i.UnitPrice.Amount, i.Quantity)).ToList()));
         }
 
         public void AddItem(OrderItem item)

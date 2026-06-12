@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using CleanArchitecture.Application.Common.Interfaces;
 using CleanArchitecture.Domain.Common;
 using CleanArchitecture.Domain.Entities;
+using CleanArchitecture.Infrastructure.Outbox;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
 
@@ -22,6 +23,10 @@ namespace CleanArchitecture.Infrastructure.Persistence
 
         public DbSet<Product> Products => Set<Product>();
         public DbSet<Order> Orders => Set<Order>();
+
+        // Transactional outbox. Not exposed on IApplicationDbContext: the Application layer never
+        // touches it — the interceptor fills it and OutboxProducerWorker drains it, both in Infrastructure.
+        public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {

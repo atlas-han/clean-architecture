@@ -2,6 +2,8 @@ using System;
 using CleanArchitecture.Application.Common.Interfaces;
 using CleanArchitecture.Infrastructure.BackgroundServices;
 using CleanArchitecture.Infrastructure.Idempotency;
+using CleanArchitecture.Infrastructure.Messaging;
+using CleanArchitecture.Infrastructure.Outbox;
 using CleanArchitecture.Infrastructure.Persistence;
 using CleanArchitecture.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
@@ -10,6 +12,7 @@ using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 
 namespace CleanArchitecture.Infrastructure
 {
@@ -22,6 +25,12 @@ namespace CleanArchitecture.Infrastructure
         {
             var connectionString = configuration.GetConnectionString("DefaultConnection");
 
+            // Drains each entity's domain events into OutboxMessage rows during SaveChanges, so the
+            // event commits in the same transaction as the order/product that raised it (no partial
+            // success). Singleton: its only dependency (IDateTime) is a singleton, and EF resolves
+            // it once per context build below.
+            services.AddSingleton<ConvertDomainEventsToOutboxInterceptor>();
+
             if (string.IsNullOrWhiteSpace(connectionString))
             {
                 // No connection string configured → fall back to InMemory so dev/test
@@ -31,15 +40,18 @@ namespace CleanArchitecture.Infrastructure
                 // inside ExecuteInTransactionAsync would otherwise throw — suppress that
                 // warning here. The transactional handler's rollback guarantee only
                 // holds against a relational provider.
-                services.AddDbContext<ApplicationDbContext>(options =>
+                services.AddDbContext<ApplicationDbContext>((provider, options) =>
                     options
                         .UseInMemoryDatabase("CleanArchitectureDb")
-                        .ConfigureWarnings(w => w.Ignore(InMemoryEventId.TransactionIgnoredWarning)));
+                        .ConfigureWarnings(w => w.Ignore(InMemoryEventId.TransactionIgnoredWarning))
+                        .AddInterceptors(provider.GetRequiredService<ConvertDomainEventsToOutboxInterceptor>()));
             }
             else
             {
-                services.AddDbContext<ApplicationDbContext>(options =>
-                    options.UseSqlServer(connectionString));
+                services.AddDbContext<ApplicationDbContext>((provider, options) =>
+                    options
+                        .UseSqlServer(connectionString)
+                        .AddInterceptors(provider.GetRequiredService<ConvertDomainEventsToOutboxInterceptor>()));
             }
 
             services.AddScoped<IApplicationDbContext>(provider =>
@@ -121,6 +133,61 @@ namespace CleanArchitecture.Infrastructure
             {
                 healthChecks.AddRedis(redisConnection, name: "redis");
             }
+
+            // Transactional outbox → Kafka. The request path only writes OutboxMessage rows inside
+            // the order/product transaction (ConvertDomainEventsToOutboxInterceptor, wired above);
+            // the single OutboxProducerWorker below drains them to Kafka out of band, so request
+            // latency and DB load never depend on the broker. The publisher mirrors the Redis/SQL
+            // fallback: a real Confluent producer when Kafka:BootstrapServers is set, a logging
+            // fallback in Development/Local when it is not, and fail-fast otherwise so production
+            // never silently drops events. Ordered after the Redis guard so a fully-unconfigured
+            // production startup reports the Redis gap first (matching the existing contract).
+            var kafkaBootstrap = configuration["Kafka:BootstrapServers"];
+            var configuredTopic = configuration["Kafka:Topic"];
+            var kafkaTopic = string.IsNullOrWhiteSpace(configuredTopic)
+                ? "clean-architecture.events"
+                : configuredTopic;
+
+            if (string.IsNullOrWhiteSpace(kafkaBootstrap))
+            {
+                if (!environment.IsDevelopment() && !environment.IsEnvironment("Local"))
+                {
+                    throw new InvalidOperationException(
+                        "Kafka:BootstrapServers is required in the '" + environment.EnvironmentName +
+                        "' environment: the outbox producer must publish to a real Kafka broker outside " +
+                        "Development/Local. Configure Kafka:BootstrapServers, or run in Development/Local.");
+                }
+
+                services.AddSingleton<IEventPublisher, LoggingEventPublisher>();
+            }
+            else
+            {
+                // Factory (not a pre-built instance) so the container owns the producer's lifetime
+                // and disposes it on shutdown, flushing in-flight deliveries.
+                services.AddSingleton<IEventPublisher>(_ => new KafkaEventPublisher(kafkaBootstrap, kafkaTopic));
+            }
+
+            // Outbox poll cadence / batch size (Outbox:PollInterval, Outbox:BatchSize), parsed with
+            // the indexer + TryParse to avoid the Configuration.Binder package (same approach as
+            // Maintenance:Enabled / Idempotency:KeyLifetime). Absent/invalid values fall back to 5s / 100.
+            var pollInterval = TimeSpan.TryParse(configuration["Outbox:PollInterval"], out var parsedPoll)
+                && parsedPoll > TimeSpan.Zero
+                    ? parsedPoll
+                    : TimeSpan.FromSeconds(5);
+            var batchSize = int.TryParse(configuration["Outbox:BatchSize"], out var parsedBatch) && parsedBatch > 0
+                ? parsedBatch
+                : 100;
+
+            // Registered as a singleton (so tests can resolve it and drive ProduceBatchAsync directly)
+            // and surfaced as the hosted service that runs the poll loop. The single Producer-side
+            // worker of the outbox.
+            services.AddSingleton(provider => new OutboxProducerWorker(
+                provider.GetRequiredService<IServiceScopeFactory>(),
+                provider.GetRequiredService<IMaintenanceState>(),
+                provider.GetRequiredService<ILogger<OutboxProducerWorker>>(),
+                pollInterval,
+                batchSize));
+            services.AddHostedService(provider => provider.GetRequiredService<OutboxProducerWorker>());
 
             return services;
         }
