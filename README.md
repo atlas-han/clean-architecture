@@ -225,6 +225,71 @@ curl -i http://localhost:5000/api/products \
 
 > 이 패턴은 서버 간 **NTP 시계 동기화**와 최소 네트워크 마진(50ms)을 전제합니다 (가이드 §7.4 주의사항).
 
+## 멱등성 (Idempotency-Key)
+
+네트워크 오류로 **부작용 있는 POST 가 중복 전송**되어도 한 번만 처리되도록, 클라이언트가 만든 고유 키로 중복 요청을 걸러냅니다 (API 디자인 가이드 §7.1). 같은 키의 재시도는 **원본 응답을 그대로 재생(replay)** 할 뿐 핸들러를 다시 실행하지 않습니다 (결제 시스템의 idempotency key 패턴과 동일).
+
+- **헤더**: `Idempotency-Key: <UUID v4>` — 클라이언트가 요청 시작 시 생성하고, 재시도 시 **같은 키를 재사용**.
+- **담당**: `Api/Idempotency/IdempotentAttribute.cs` (`[Idempotent]`, `IFilterFactory`) + `Api/Idempotency/IdempotencyFilter.cs` (`IAsyncResourceFilter`). 리소스 필터라서 모델 바인딩 *전* 에 요청 본문으로 fingerprint 를 만들고, 응답 직렬화 결과를 *캡처* 해 저장합니다.
+- **적용 엔드포인트**: `POST /api/v1/orders`, `POST /api/v1/orders/place` (주문 생성). `[Idempotent]` 를 단 액션에서만 동작합니다.
+
+### 동작
+
+| 키 상태 | 필터 동작 |
+|---------|-----------|
+| 헤더 없음 | 그대로 통과 (이 엔드포인트에서 키는 **선택적**, dedup 없음) |
+| 처음 보는 키 | 키 선점(InProgress) → 액션 실행 → **2xx 응답만** 캐시(Completed) |
+| 완료된 키 (같은 본문) | 캐시된 원본 응답을 **그대로 재생** + `Idempotency-Replayed: true` 헤더 (원본과 동일한 201/200) |
+| 처리 중인 키 (동시 요청) | **409 Conflict** — 같은 키가 아직 처리 중 (425 아님, 가이드 §7.1) |
+| 같은 키 + 다른 본문 | **409 Conflict** — 키 재사용 오용 방지 (가이드의 422 또는 409 중 409 선택) |
+| 만료(24h 경과) 후 | 기록 없음 → **새 요청으로 처리** |
+
+- **성공만 캐시**: 4xx/5xx 응답은 저장하지 않고 선점한 키를 **해제** 하므로, 클라이언트가 본문을 고쳐 같은 키로 다시 시도할 수 있습니다.
+- **잠금 해제 보장**: deadline 취소·예외·클라이언트 disconnect 등 어떤 실패에서도 `CancellationToken.None` 으로 키를 해제합니다 — 정당한 재시도가 "처리 중(409)" 으로 영구 차단되지 않도록 (가이드 §7.4 주의사항). 해제마저 실패하면 24h TTL 이 백스톱.
+
+키 재사용/처리 중 충돌은 `ApiExceptionFilter` 와 동일한 §4.3 `ErrorResponse` 봉투로 내려갑니다:
+
+```json
+{
+  "traceId": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "timestamp": "2026-06-12T09:30:00.1234567Z",
+  "error": {
+    "code": "CONFLICT",
+    "message": "A request with this Idempotency-Key is already being processed."
+  }
+}
+```
+
+```bash
+# 같은 키로 두 번 POST → 두 번째는 원본 201 을 그대로 재생 (주문은 1건만 생성)
+KEY=$(uuidgen)
+curl -s -X POST http://localhost:5000/api/v1/orders/place \
+  -H "Content-Type: application/json" -H "Idempotency-Key: $KEY" \
+  -d '{"customerName":"Alice","items":[{"productId":"<id>","quantity":3}]}'
+
+curl -i -X POST http://localhost:5000/api/v1/orders/place \
+  -H "Content-Type: application/json" -H "Idempotency-Key: $KEY" \
+  -d '{"customerName":"Alice","items":[{"productId":"<id>","quantity":3}]}'
+# → 201 Created + 헤더 `Idempotency-Replayed: true` (동일한 응답 본문, 재고는 한 번만 차감)
+```
+
+### 저장소 (Redis / 폴백)
+
+키와 캐시된 응답은 `IDistributedCache` 에 **24시간 TTL** 로 저장합니다 (`Application/Common/Interfaces/IIdempotencyStore.cs` 포트 → `Infrastructure/Idempotency/DistributedCacheIdempotencyStore.cs` 구현). 다중 인스턴스에서도 dedup 이 성립하도록 분산 캐시를 사용합니다.
+
+```jsonc
+// appsettings.json — Redis 연결 문자열이 있으면 Redis, 없으면 인메모리 폴백
+"ConnectionStrings": {
+  "Redis": "localhost:6379"   // 설정 시 AddStackExchangeRedisCache (운영)
+                              // 미설정 시 AddDistributedMemoryCache (개발/테스트 — Redis 불필요)
+}
+```
+
+- `DefaultConnection` 유무로 SQL Server ↔ EF InMemory 를 가르는 기존 폴백 패턴과 동일합니다.
+- 통합 테스트는 Redis 없이 인메모리 분산 캐시로 동일한 store 로직을 실행합니다.
+
+> ⚠️ 현재 키 선점(`TryBeginAsync`)은 get-then-set 이라 미세한 경합 창이 있습니다. 운영 Redis 에서는 `SET key val NX PX`(원자적 set-if-absent)로 교체하는 것이 정석입니다(코드 주석에 후속으로 표기). 또한 replay 는 status / Content-Type / body / Location 만 재현하며, 그 밖의 응답 헤더는 보존하지 않습니다.
+
 ## 테스트
 
 xUnit 만 사용 (외부 어설션·모킹 라이브러리 없음). 3개 테스트 프로젝트:
