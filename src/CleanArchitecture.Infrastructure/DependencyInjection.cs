@@ -1,5 +1,6 @@
 using CleanArchitecture.Application.Common.Interfaces;
 using CleanArchitecture.Infrastructure.BackgroundServices;
+using CleanArchitecture.Infrastructure.Idempotency;
 using CleanArchitecture.Infrastructure.Persistence;
 using CleanArchitecture.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
@@ -56,6 +57,22 @@ namespace CleanArchitecture.Infrastructure
                 return new MaintenanceState(enabled);
             });
             services.AddHostedService<DemoBatchWorker>();
+
+            // Idempotency-Key store (§7.1). Backed by a distributed cache so the dedup guarantee
+            // holds across instances: Redis when configured (ConnectionStrings:Redis), else an
+            // in-memory distributed cache so dev/test (and the WebApplicationFactory integration
+            // tests) run without a Redis server — mirrors the DefaultConnection → InMemory EF
+            // fallback above. The store is a stateless wrapper over the singleton cache.
+            var redisConnection = configuration.GetConnectionString("Redis");
+            if (string.IsNullOrWhiteSpace(redisConnection))
+            {
+                services.AddDistributedMemoryCache();
+            }
+            else
+            {
+                services.AddStackExchangeRedisCache(options => options.Configuration = redisConnection);
+            }
+            services.AddSingleton<IIdempotencyStore, DistributedCacheIdempotencyStore>();
 
             // "database" check verifies the EF Core connection (CanConnect) for /health.
             services.AddHealthChecks()

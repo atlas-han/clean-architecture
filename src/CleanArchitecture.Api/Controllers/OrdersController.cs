@@ -2,6 +2,7 @@ using System;
 using System.Threading.Tasks;
 using CleanArchitecture.Api.Common;
 using CleanArchitecture.Api.Common.Responses;
+using CleanArchitecture.Api.Idempotency;
 using CleanArchitecture.Application.Common.Messaging;
 using CleanArchitecture.Application.Orders.Commands.CancelOrder;
 using CleanArchitecture.Application.Orders.Commands.ConfirmOrder;
@@ -38,6 +39,7 @@ namespace CleanArchitecture.Api.Controllers
         }
 
         [HttpPost]
+        [Idempotent] // Safe retries via Idempotency-Key (§7.1) — duplicate POSTs replay the first response.
         public async Task<IActionResult> Create([FromBody] CreateOrderCommand command)
         {
             var id = await Sender.Send(command, DeadlineToken);
@@ -46,6 +48,7 @@ namespace CleanArchitecture.Api.Controllers
         }
 
         [HttpPost("place")]
+        [Idempotent] // Safe retries via Idempotency-Key (§7.1) — duplicate POSTs replay the first response.
         public async Task<IActionResult> Place([FromBody] PlaceOrderCommand command)
         {
             var id = await Sender.Send(command, DeadlineToken);
