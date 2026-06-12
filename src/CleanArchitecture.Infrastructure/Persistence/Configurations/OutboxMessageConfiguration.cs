@@ -25,12 +25,14 @@ namespace CleanArchitecture.Infrastructure.Persistence.Configurations
             builder.Property(m => m.OccurredOnUtc)
                 .IsRequired();
 
-            // The worker's poll path is "oldest unprocessed first". A filtered index over just the
+            // The worker's poll path is "oldest pending first". A filtered index over just the
             // pending rows keeps that query cheap and small no matter how large the processed
-            // history grows, so the outbox doesn't drag on the write path. HasFilter is SQL Server
-            // syntax; the InMemory provider (dev/test) ignores it and simply omits the filter.
+            // history grows, so the outbox doesn't drag on the write path. The filter matches the
+            // worker's drain predicate exactly — unpublished AND not dead-lettered — so quarantined
+            // poison messages drop out of the index too. HasFilter is SQL Server syntax; the
+            // InMemory provider (dev/test) ignores it and simply omits the filter.
             builder.HasIndex(m => m.OccurredOnUtc)
-                .HasFilter("[ProcessedOnUtc] IS NULL")
+                .HasFilter("[ProcessedOnUtc] IS NULL AND [DeadLetteredOnUtc] IS NULL")
                 .HasDatabaseName("IX_OutboxMessages_Unprocessed");
         }
     }

@@ -5,7 +5,8 @@ namespace CleanArchitecture.Infrastructure.Outbox
     // A pending integration event, written into the same transaction as the originating
     // order/product write (see ConvertDomainEventsToOutboxInterceptor) and later published to
     // Kafka by OutboxProducerWorker. Deliberately not a BaseEntity: it carries its own lifecycle
-    // columns (OccurredOnUtc / ProcessedOnUtc / Error) and must not pick up audit-field stamping.
+    // columns (OccurredOnUtc / ProcessedOnUtc / Error / Attempts / DeadLetteredOnUtc) and must not
+    // pick up audit-field stamping.
     public class OutboxMessage
     {
         // Version-7 GUID: time-ordered, so the default also gives a stable insert order.
@@ -28,5 +29,14 @@ namespace CleanArchitecture.Infrastructure.Outbox
 
         // Last publish failure, if any (left unprocessed for retry).
         public string? Error { get; set; }
+
+        // Number of failed publish attempts so far. The worker increments this on each failure and
+        // gives up (dead-letters the row) once it reaches the configured Outbox:MaxRetries.
+        public int Attempts { get; set; }
+
+        // Null until the row is dead-lettered: set when Attempts hits Outbox:MaxRetries so a poison
+        // message stops being retried forever. The worker's poll filter excludes non-null rows, but
+        // the row stays in the table (with its Error + Attempts) as a dead-letter record.
+        public DateTime? DeadLetteredOnUtc { get; set; }
     }
 }

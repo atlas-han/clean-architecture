@@ -167,9 +167,11 @@ namespace CleanArchitecture.Infrastructure
                 services.AddSingleton<IEventPublisher>(_ => new KafkaEventPublisher(kafkaBootstrap, kafkaTopic));
             }
 
-            // Outbox poll cadence / batch size (Outbox:PollInterval, Outbox:BatchSize), parsed with
-            // the indexer + TryParse to avoid the Configuration.Binder package (same approach as
-            // Maintenance:Enabled / Idempotency:KeyLifetime). Absent/invalid values fall back to 5s / 100.
+            // Outbox poll cadence / batch size / retry cap (Outbox:PollInterval, Outbox:BatchSize,
+            // Outbox:MaxRetries), parsed with the indexer + TryParse to avoid the Configuration.Binder
+            // package (same approach as Maintenance:Enabled / Idempotency:KeyLifetime). Absent/invalid
+            // values fall back to 5s / 100 / 5. MaxRetries caps publish attempts: once a row has failed
+            // that many times the worker dead-letters it instead of retrying forever.
             var pollInterval = TimeSpan.TryParse(configuration["Outbox:PollInterval"], out var parsedPoll)
                 && parsedPoll > TimeSpan.Zero
                     ? parsedPoll
@@ -177,6 +179,9 @@ namespace CleanArchitecture.Infrastructure
             var batchSize = int.TryParse(configuration["Outbox:BatchSize"], out var parsedBatch) && parsedBatch > 0
                 ? parsedBatch
                 : 100;
+            var maxRetries = int.TryParse(configuration["Outbox:MaxRetries"], out var parsedMax) && parsedMax > 0
+                ? parsedMax
+                : 5;
 
             // Registered as a singleton (so tests can resolve it and drive ProduceBatchAsync directly)
             // but NOT hosted here: running the poll loop is a per-host decision so exactly one process
@@ -187,7 +192,8 @@ namespace CleanArchitecture.Infrastructure
                 provider.GetRequiredService<IMaintenanceState>(),
                 provider.GetRequiredService<ILogger<OutboxProducerWorker>>(),
                 pollInterval,
-                batchSize));
+                batchSize,
+                maxRetries));
 
             return services;
         }

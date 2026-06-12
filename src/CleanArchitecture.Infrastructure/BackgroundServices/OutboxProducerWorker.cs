@@ -26,19 +26,22 @@ namespace CleanArchitecture.Infrastructure.BackgroundServices
         private readonly ILogger<OutboxProducerWorker> _logger;
         private readonly TimeSpan _pollInterval;
         private readonly int _batchSize;
+        private readonly int _maxRetries;
 
         public OutboxProducerWorker(
             IServiceScopeFactory scopeFactory,
             IMaintenanceState maintenance,
             ILogger<OutboxProducerWorker> logger,
             TimeSpan pollInterval,
-            int batchSize)
+            int batchSize,
+            int maxRetries)
         {
             _scopeFactory = scopeFactory;
             _maintenance = maintenance;
             _logger = logger;
             _pollInterval = pollInterval;
             _batchSize = batchSize;
+            _maxRetries = maxRetries;
         }
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -78,10 +81,12 @@ namespace CleanArchitecture.Infrastructure.BackgroundServices
             }
         }
 
-        // One drain pass: publish the oldest unprocessed messages, marking each processed on success
-        // or recording the error on failure (left unprocessed → retried next tick, so delivery is
-        // at-least-once). Public and scope-managed so tests can drive it deterministically without
-        // spinning the timer loop. Returns the number of messages published this pass.
+        // One drain pass: publish the oldest pending messages, marking each processed on success or
+        // recording the error on failure (left unprocessed → retried next tick, so delivery is
+        // at-least-once). A row that keeps failing is dead-lettered once its attempt count reaches
+        // _maxRetries, so a poison message can't be retried forever (see the catch block). Public and
+        // scope-managed so tests can drive it deterministically without spinning the timer loop.
+        // Returns the number of messages published this pass.
         public async Task<int> ProduceBatchAsync(CancellationToken cancellationToken)
         {
             using (var scope = _scopeFactory.CreateScope())
@@ -90,8 +95,10 @@ namespace CleanArchitecture.Infrastructure.BackgroundServices
                 var publisher = scope.ServiceProvider.GetRequiredService<IEventPublisher>();
                 var dateTime = scope.ServiceProvider.GetRequiredService<IDateTime>();
 
+                // Pending = unpublished AND not dead-lettered; quarantined poison messages are
+                // skipped so they aren't retried forever (matches the filtered index predicate).
                 List<OutboxMessage> messages = await db.Set<OutboxMessage>()
-                    .Where(m => m.ProcessedOnUtc == null)
+                    .Where(m => m.ProcessedOnUtc == null && m.DeadLetteredOnUtc == null)
                     .OrderBy(m => m.OccurredOnUtc)
                     .Take(_batchSize)
                     .ToListAsync(cancellationToken);
@@ -118,10 +125,26 @@ namespace CleanArchitecture.Infrastructure.BackgroundServices
                     {
                         // Leave ProcessedOnUtc null so this row is retried next tick; one bad
                         // message must not block the rest of the batch.
+                        message.Attempts++;
                         message.Error = ex.Message;
-                        _logger.LogError(ex,
-                            "Failed to publish outbox message {outbox_id} (type {event_type}); will retry",
-                            message.Id, message.Type);
+
+                        if (message.Attempts >= _maxRetries)
+                        {
+                            // Poison message: stop retrying so it can't be reprocessed forever.
+                            // Quarantine it by stamping DeadLetteredOnUtc — the drain query filters
+                            // these out, but the row stays in the table (with its Error + Attempts)
+                            // as a dead-letter record for inspection / manual replay.
+                            message.DeadLetteredOnUtc = dateTime.UtcNow;
+                            _logger.LogError(ex,
+                                "Dead-lettered outbox message {outbox_id} (type {event_type}) after {attempts} failed attempts",
+                                message.Id, message.Type, message.Attempts);
+                        }
+                        else
+                        {
+                            _logger.LogError(ex,
+                                "Failed to publish outbox message {outbox_id} (type {event_type}); attempt {attempts} of {max_attempts}, will retry",
+                                message.Id, message.Type, message.Attempts, _maxRetries);
+                        }
                     }
                 }
 
