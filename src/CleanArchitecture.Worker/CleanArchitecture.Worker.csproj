@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk.Worker">
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <LangVersion>9.0</LangVersion>
+    <Nullable>enable</Nullable>
+    <RootNamespace>CleanArchitecture.Worker</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Generic Host (Host.CreateApplicationBuilder); the rest of the hosting/DI/logging stack
+         comes transitively via Infrastructure's Microsoft.Extensions.* references. -->
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="9.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Composition root for the outbox producer: references Infrastructure (which transitively
+         brings Application + Domain), mirroring how the Api host is wired. -->
+    <ProjectReference Include="..\CleanArchitecture.Infrastructure\CleanArchitecture.Infrastructure.csproj" />
+  </ItemGroup>
+</Project>

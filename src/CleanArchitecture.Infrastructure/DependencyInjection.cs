@@ -179,16 +179,26 @@ namespace CleanArchitecture.Infrastructure
                 : 100;
 
             // Registered as a singleton (so tests can resolve it and drive ProduceBatchAsync directly)
-            // and surfaced as the hosted service that runs the poll loop. The single Producer-side
-            // worker of the outbox.
+            // but NOT hosted here: running the poll loop is a per-host decision so exactly one process
+            // drains the outbox and we never double-publish. The dedicated Worker host opts in via
+            // AddOutboxProcessing(); the Api intentionally does not, leaving it to only write rows.
             services.AddSingleton(provider => new OutboxProducerWorker(
                 provider.GetRequiredService<IServiceScopeFactory>(),
                 provider.GetRequiredService<IMaintenanceState>(),
                 provider.GetRequiredService<ILogger<OutboxProducerWorker>>(),
                 pollInterval,
                 batchSize));
-            services.AddHostedService(provider => provider.GetRequiredService<OutboxProducerWorker>());
 
+            return services;
+        }
+
+        // Opts a host into actually *running* the outbox producer (the OutboxProducerWorker poll
+        // loop). Separated from AddInfrastructure because hosting is a composition-root decision:
+        // exactly one process must drain the outbox to Kafka. The CleanArchitecture.Worker host
+        // calls this; the Api host does not. Relies on the singleton registered in AddInfrastructure.
+        public static IServiceCollection AddOutboxProcessing(this IServiceCollection services)
+        {
+            services.AddHostedService(provider => provider.GetRequiredService<OutboxProducerWorker>());
             return services;
         }
     }
