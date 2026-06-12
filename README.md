@@ -138,7 +138,7 @@ curl http://localhost:5000/api/v1/products
   - `GET /health` — 로드밸런서/오케스트레이터의 liveness·readiness 프로브가 죽지 않도록 **언제나** 정상 동작.
   - `/admin/maintenance*` — 점검을 해제(resume)할 제어 경로가 막히면 안 되므로 면제.
 
-- **백그라운드 배치**: `Infrastructure/BackgroundServices/DemoBatchWorker.cs` 가 매 주기 시작에서
+- **백그라운드 배치**: `Infrastructure/BackgroundServices/OutboxProducerWorker.cs` 가 매 주기 시작에서
   `IMaintenanceState.IsStopped` 를 확인하고, 점검 중이면 해당 틱 작업을 건너뜁니다(워커 자체는 살아 있음).
   실제 배치를 추가할 때도 동일하게 작업 단위 앞에서 gate 를 확인하면 됩니다.
 
@@ -518,7 +518,7 @@ clean-architecture/
 │   │
 │   ├── CleanArchitecture.Infrastructure/
 │   │   ├── DependencyInjection.cs                 ◄ SQL/InMemory · Redis/메모리 폴백 · 헬스체크
-│   │   ├── BackgroundServices/DemoBatchWorker.cs
+│   │   ├── BackgroundServices/OutboxProducerWorker.cs
 │   │   ├── Idempotency/DistributedCacheIdempotencyStore.cs
 │   │   ├── Persistence/ApplicationDbContext.cs
 │   │   ├── Persistence/Configurations/{Product, Order, OrderItem}Configuration.cs
@@ -548,6 +548,6 @@ clean-architecture/
         ├── {Idempotency, Maintenance, HealthCheck, SecurityHeaders, GracefulShutdown, ProductConcurrency}Tests.cs
         ├── {DeadlinePropagationMiddleware, DeadlinePropagationHandler, RequestLoggingMiddleware}Tests.cs
         ├── {JsonConsoleFormatter, PiiMasker, HeaderMasker}Tests.cs
-        ├── {ApiErrorResponse, DistributedCacheIdempotencyStore, DemoBatchWorker, InfrastructureDependencyInjection}Tests.cs
+        ├── {ApiErrorResponse, DistributedCacheIdempotencyStore, InfrastructureDependencyInjection}Tests.cs
         └── Infrastructure/{CapturingLoggerProvider, ErrorResponseTestFactory, LoggingTestFactory, ThrowingTestController}.cs
 ```

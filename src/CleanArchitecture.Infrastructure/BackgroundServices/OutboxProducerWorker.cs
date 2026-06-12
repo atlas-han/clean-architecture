@@ -18,7 +18,7 @@ namespace CleanArchitecture.Infrastructure.BackgroundServices
     // The request path just writes OutboxMessage rows inside the order/product transaction
     // (ConvertDomainEventsToOutboxInterceptor) and returns; this single background worker drains
     // them out of band, so request latency and DB load never wait on the broker. Skips ticks
-    // during maintenance, mirroring DemoBatchWorker.
+    // during maintenance.
     public sealed class OutboxProducerWorker : BackgroundService
     {
         private readonly IServiceScopeFactory _scopeFactory;

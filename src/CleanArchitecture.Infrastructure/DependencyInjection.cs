@@ -62,7 +62,7 @@ namespace CleanArchitecture.Infrastructure
             // Maintenance (stop/resume) switch: a shared in-memory singleton seeded from the
             // configured default (Maintenance:Enabled). Toggled at runtime via the
             // /admin/maintenance endpoints, so a maintenance window needs no redeploy. The
-            // demo batch worker observes the same singleton and skips its work while stopped.
+            // outbox producer worker observes the same singleton and skips its work while stopped.
             // The seed is read lazily from the resolved IConfiguration (not eagerly here) so
             // the final merged configuration wins — indexer + TryParse avoids pulling in the
             // Configuration.Binder package, and a missing/invalid value defaults to false.
@@ -72,7 +72,6 @@ namespace CleanArchitecture.Infrastructure
                 bool.TryParse(config["Maintenance:Enabled"], out var enabled);
                 return new MaintenanceState(enabled);
             });
-            services.AddHostedService<DemoBatchWorker>();
 
             // Idempotency-Key store (§7.1). Backed by a distributed cache so the dedup guarantee
             // holds across instances: Redis when configured (ConnectionStrings:Redis). The in-memory

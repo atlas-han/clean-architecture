@@ -21,8 +21,7 @@
          the Redis backend (Caching.StackExchangeRedis) for production. -->
     <PackageReference Include="Microsoft.Extensions.Caching.Memory" Version="9.0.0" />
     <PackageReference Include="Microsoft.Extensions.Caching.StackExchangeRedis" Version="9.0.0" />
-    <!-- BackgroundService / IHostedService / AddHostedService for the demo batch worker and the
-         outbox producer worker. -->
+    <!-- BackgroundService / IHostedService / AddHostedService for the outbox producer worker. -->
     <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="9.0.0" />
     <!-- Unified JSON console log format (§14.3): the ConsoleFormatter base type and the
          AddConsole/AddConsoleFormatter builder extensions behind AddUnifiedConsoleLogging,
