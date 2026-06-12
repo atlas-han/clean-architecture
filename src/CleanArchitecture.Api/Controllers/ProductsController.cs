@@ -1,14 +1,13 @@
 using System;
 using System.Threading.Tasks;
+using CleanArchitecture.Api.Common;
+using CleanArchitecture.Api.Common.Responses;
 using CleanArchitecture.Application.Common.Messaging;
-using CleanArchitecture.Application.Common.Models;
 using CleanArchitecture.Application.Products.Commands.CreateProduct;
 using CleanArchitecture.Application.Products.Commands.DeleteProduct;
 using CleanArchitecture.Application.Products.Commands.UpdateProduct;
-using CleanArchitecture.Application.Products.Queries.Dtos;
 using CleanArchitecture.Application.Products.Queries.GetProductById;
 using CleanArchitecture.Application.Products.Queries.GetProducts;
-using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 
 namespace CleanArchitecture.Api.Controllers
@@ -20,27 +19,29 @@ namespace CleanArchitecture.Api.Controllers
         }
 
         [HttpGet]
-        public async Task<ActionResult<PagedResult<ProductDto>>> GetAll(
+        public async Task<IActionResult> GetAll(
             [FromQuery] int page = 1,
             [FromQuery] int pageSize = 20)
         {
             var result = await Sender.Send(new GetProductsQuery(page, pageSize));
-            return Ok(result);
+            // List response: Data is the array, pagination goes in Meta (§4.2).
+            var meta = new PaginationMeta(result.Page, result.PageSize, result.TotalCount, result.TotalPages);
+            return Ok(ApiResult.Success(HttpContext, result.Items, meta));
         }
 
         [HttpGet("{id:guid}")]
-        public async Task<ActionResult<ProductDto>> GetById(Guid id)
+        public async Task<IActionResult> GetById(Guid id)
         {
             var product = await Sender.Send(new GetProductByIdQuery(id));
-            return Ok(product);
+            return Ok(ApiResult.Success(HttpContext, product));
         }
 
         [HttpPost]
-        public async Task<ActionResult<ProductDto>> Create([FromBody] CreateProductCommand command)
+        public async Task<IActionResult> Create([FromBody] CreateProductCommand command)
         {
             var id = await Sender.Send(command);
             var dto = await Sender.Send(new GetProductByIdQuery(id));
-            return CreatedAtAction(nameof(GetById), new { id }, dto);
+            return CreatedAtAction(nameof(GetById), new { id }, ApiResult.Success(HttpContext, dto));
         }
 
         [HttpPut("{id:guid}")]
@@ -48,11 +49,8 @@ namespace CleanArchitecture.Api.Controllers
         {
             if (id != command.Id)
             {
-                return BadRequest(new ProblemDetails
-                {
-                    Title = "Route id does not match body id.",
-                    Status = StatusCodes.Status400BadRequest
-                });
+                return BadRequest(ApiResult.Error(HttpContext, ErrorCodes.ValidationError,
+                    "Route id does not match body id."));
             }
 
             await Sender.Send(command);

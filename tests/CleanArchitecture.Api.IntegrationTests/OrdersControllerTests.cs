@@ -21,10 +21,11 @@ namespace CleanArchitecture.Api.IntegrationTests
             });
         }
 
+        // Single-resource payloads live under the SuccessResponse `data` field (§4.2).
         private static async Task<Guid> ReadCreatedIdAsync(HttpResponseMessage resp)
         {
-            var dto = await resp.Content.ReadFromJsonAsync<JsonElement>();
-            return dto.GetProperty("id").GetGuid();
+            var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+            return body.GetProperty("data").GetProperty("id").GetGuid();
         }
 
         private async Task<Guid> CreateProductAsync(decimal price = 100m, int stock = 10)
@@ -59,35 +60,37 @@ namespace CleanArchitecture.Api.IntegrationTests
             Assert.Equal(HttpStatusCode.Created, createResp.StatusCode);
             Assert.NotNull(createResp.Headers.Location);
 
-            var createdDto = await createResp.Content.ReadFromJsonAsync<JsonElement>();
-            var id = createdDto.GetProperty("id").GetGuid();
+            var created = (await createResp.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("data");
+            var id = created.GetProperty("id").GetGuid();
             Assert.NotEqual(Guid.Empty, id);
-            Assert.Equal(orderPayload.customerName, createdDto.GetProperty("customerName").GetString());
-            Assert.Equal(150m, createdDto.GetProperty("totalAmount").GetDecimal());
+            Assert.Equal(orderPayload.customerName, created.GetProperty("customerName").GetString());
+            Assert.Equal(150m, created.GetProperty("totalAmount").GetDecimal());
 
             var getResp = await _client.GetAsync($"/api/orders/{id}");
             Assert.Equal(HttpStatusCode.OK, getResp.StatusCode);
 
-            var dto = await getResp.Content.ReadFromJsonAsync<JsonElement>();
-            Assert.Equal(orderPayload.customerName, dto.GetProperty("customerName").GetString());
-            Assert.Equal(150m, dto.GetProperty("totalAmount").GetDecimal());
-            Assert.Equal(1, dto.GetProperty("items").GetArrayLength());
+            var data = (await getResp.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("data");
+            Assert.Equal(orderPayload.customerName, data.GetProperty("customerName").GetString());
+            Assert.Equal(150m, data.GetProperty("totalAmount").GetDecimal());
+            Assert.Equal(1, data.GetProperty("items").GetArrayLength());
         }
 
         [Fact]
-        public async Task Create_InvalidPayload_Returns_400()
+        public async Task Create_InvalidPayload_Returns_400_With_FieldErrors()
         {
             var payload = new { customerName = "", items = new object[0] };
 
             var resp = await _client.PostAsJsonAsync("/api/orders", payload);
 
             Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
-            var problem = await resp.Content.ReadFromJsonAsync<JsonElement>();
-            Assert.True(problem.TryGetProperty("errors", out _));
+            var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+            Assert.Equal("VALIDATION_ERROR", body.GetProperty("error").GetProperty("code").GetString());
+            Assert.True(body.GetProperty("error").TryGetProperty("details", out var details));
+            Assert.Equal(JsonValueKind.Array, details.ValueKind);
         }
 
         [Fact]
-        public async Task Create_InsufficientStock_Returns_400()
+        public async Task Create_InsufficientStock_Returns_422()
         {
             var productId = await CreateProductAsync(price: 40m, stock: 2);
 
@@ -99,7 +102,7 @@ namespace CleanArchitecture.Api.IntegrationTests
 
             var resp = await _client.PostAsJsonAsync("/api/orders", payload);
 
-            Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
+            Assert.Equal(HttpStatusCode.UnprocessableEntity, resp.StatusCode);
         }
 
         [Fact]
@@ -142,8 +145,8 @@ namespace CleanArchitecture.Api.IntegrationTests
             Assert.Equal(HttpStatusCode.NoContent, cancelResp.StatusCode);
 
             var getResp = await _client.GetAsync($"/api/orders/{id}");
-            var dto = await getResp.Content.ReadFromJsonAsync<JsonElement>();
-            Assert.Equal(2, dto.GetProperty("status").GetInt32());
+            var data = (await getResp.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("data");
+            Assert.Equal(2, data.GetProperty("status").GetInt32());
         }
 
         [Fact]
@@ -169,8 +172,8 @@ namespace CleanArchitecture.Api.IntegrationTests
             Assert.Equal(HttpStatusCode.NoContent, confirmResp.StatusCode);
 
             var getResp = await _client.GetAsync($"/api/orders/{id}");
-            var dto = await getResp.Content.ReadFromJsonAsync<JsonElement>();
-            Assert.Equal(1, dto.GetProperty("status").GetInt32());
+            var data = (await getResp.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("data");
+            Assert.Equal(1, data.GetProperty("status").GetInt32());
         }
 
         [Fact]
@@ -181,7 +184,7 @@ namespace CleanArchitecture.Api.IntegrationTests
         }
 
         [Fact]
-        public async Task Confirm_CancelledOrder_Returns_400()
+        public async Task Confirm_CancelledOrder_Returns_422()
         {
             var productId = await CreateProductAsync();
             var orderPayload = new
@@ -196,7 +199,7 @@ namespace CleanArchitecture.Api.IntegrationTests
             Assert.Equal(HttpStatusCode.NoContent, cancelResp.StatusCode);
 
             var confirmResp = await _client.PostAsync($"/api/orders/{id}/confirm", null);
-            Assert.Equal(HttpStatusCode.BadRequest, confirmResp.StatusCode);
+            Assert.Equal(HttpStatusCode.UnprocessableEntity, confirmResp.StatusCode);
         }
 
         [Fact]
@@ -218,17 +221,17 @@ namespace CleanArchitecture.Api.IntegrationTests
 
             var getOrder = await _client.GetAsync($"/api/orders/{id}");
             Assert.Equal(HttpStatusCode.OK, getOrder.StatusCode);
-            var orderDto = await getOrder.Content.ReadFromJsonAsync<JsonElement>();
-            Assert.Equal(120m, orderDto.GetProperty("totalAmount").GetDecimal());
+            var orderData = (await getOrder.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("data");
+            Assert.Equal(120m, orderData.GetProperty("totalAmount").GetDecimal());
 
             var getProduct = await _client.GetAsync($"/api/products/{productId}");
             Assert.Equal(HttpStatusCode.OK, getProduct.StatusCode);
-            var productDto = await getProduct.Content.ReadFromJsonAsync<JsonElement>();
-            Assert.Equal(7, productDto.GetProperty("stock").GetInt32());
+            var productData = (await getProduct.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("data");
+            Assert.Equal(7, productData.GetProperty("stock").GetInt32());
         }
 
         [Fact]
-        public async Task Place_InsufficientStock_Returns_400()
+        public async Task Place_InsufficientStock_Returns_422()
         {
             var productId = await CreateProductAsync(price: 40m, stock: 2);
 
@@ -240,11 +243,11 @@ namespace CleanArchitecture.Api.IntegrationTests
 
             var resp = await _client.PostAsJsonAsync("/api/orders/place", payload);
 
-            Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
+            Assert.Equal(HttpStatusCode.UnprocessableEntity, resp.StatusCode);
         }
 
         [Fact]
-        public async Task GetAll_ReturnsPagedEnvelopeWithCreatedOrders()
+        public async Task GetAll_ReturnsSuccessEnvelope_With_DataArray_And_Meta()
         {
             var productId = await CreateProductAsync(price: 20m);
             var marker = "LIST-" + Guid.NewGuid().ToString("N").Substring(0, 8);
@@ -262,15 +265,17 @@ namespace CleanArchitecture.Api.IntegrationTests
 
             var envelope = await listResp.Content.ReadFromJsonAsync<JsonElement>();
             Assert.Equal(JsonValueKind.Object, envelope.ValueKind);
-            Assert.True(envelope.GetProperty("totalCount").GetInt32() >= 1);
-            Assert.Equal(1, envelope.GetProperty("page").GetInt32());
-            Assert.Equal(100, envelope.GetProperty("pageSize").GetInt32());
 
-            var items = envelope.GetProperty("items");
-            Assert.Equal(JsonValueKind.Array, items.ValueKind);
+            var meta = envelope.GetProperty("meta");
+            Assert.True(meta.GetProperty("totalCount").GetInt32() >= 1);
+            Assert.Equal(1, meta.GetProperty("page").GetInt32());
+            Assert.Equal(100, meta.GetProperty("pageSize").GetInt32());
+
+            var data = envelope.GetProperty("data");
+            Assert.Equal(JsonValueKind.Array, data.ValueKind);
 
             JsonElement? mine = null;
-            foreach (var el in items.EnumerateArray())
+            foreach (var el in data.EnumerateArray())
             {
                 if (el.GetProperty("customerName").GetString() == marker)
                 {

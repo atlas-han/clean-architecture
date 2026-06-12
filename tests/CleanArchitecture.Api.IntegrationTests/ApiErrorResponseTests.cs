@@ -22,34 +22,37 @@ namespace CleanArchitecture.Api.IntegrationTests
         }
 
         [Fact]
-        public async Task Validation_400_Response_Has_Standard_Envelope_And_Errors()
+        public async Task Validation_400_Response_Has_ErrorEnvelope_And_FieldDetails()
         {
             var payload = new { name = "", description = "", price = -1m, stock = -1 };
 
             var resp = await _client.PostAsJsonAsync("/api/products", payload);
 
             Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
-            var problem = await resp.Content.ReadFromJsonAsync<JsonElement>();
+            var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
 
-            AssertCommonEnvelope(problem, expectedStatus: 400, expectedCode: "VALIDATION_FAILED", expectedInstance: "/api/products");
-            Assert.True(problem.TryGetProperty("errors", out var errors));
-            Assert.True(errors.TryGetProperty("Name", out _));
+            AssertErrorEnvelope(body, expectedCode: "VALIDATION_ERROR");
+
+            var details = body.GetProperty("error").GetProperty("details");
+            Assert.Equal(JsonValueKind.Array, details.ValueKind);
+            Assert.True(HasFieldError(details, "Name"));
         }
 
         [Fact]
-        public async Task NotFound_404_Response_Has_Standard_Envelope()
+        public async Task NotFound_404_Response_Has_ErrorEnvelope_Without_Details()
         {
             var resp = await _client.GetAsync($"/api/products/{Guid.NewGuid()}");
 
             Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
-            var problem = await resp.Content.ReadFromJsonAsync<JsonElement>();
+            var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
 
-            AssertCommonEnvelope(problem, expectedStatus: 404, expectedCode: "RESOURCE_NOT_FOUND", expectedInstancePrefix: "/api/products/");
-            Assert.False(string.IsNullOrWhiteSpace(problem.GetProperty("detail").GetString()));
+            AssertErrorEnvelope(body, expectedCode: "NOT_FOUND");
+            // details is omitted entirely (not null, not []) for non-validation errors (§4.3).
+            Assert.False(body.GetProperty("error").TryGetProperty("details", out _));
         }
 
         [Fact]
-        public async Task Domain_400_Response_Has_DomainRuleViolated_Code()
+        public async Task Domain_Violation_Maps_To_422_BusinessRuleViolation()
         {
             var productId = await CreateProductAsync(price: 40m, stock: 2);
 
@@ -61,32 +64,32 @@ namespace CleanArchitecture.Api.IntegrationTests
 
             var resp = await _client.PostAsJsonAsync("/api/orders/place", payload);
 
-            Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
-            var problem = await resp.Content.ReadFromJsonAsync<JsonElement>();
+            Assert.Equal(HttpStatusCode.UnprocessableEntity, resp.StatusCode);
+            var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
 
-            AssertCommonEnvelope(problem, expectedStatus: 400, expectedCode: "DOMAIN_RULE_VIOLATED", expectedInstance: "/api/orders/place");
+            AssertErrorEnvelope(body, expectedCode: "BUSINESS_RULE_VIOLATION");
         }
 
         [Fact]
-        public async Task Derived_Domain_Exception_Maps_To_400_DomainRuleViolated()
+        public async Task Derived_Domain_Exception_Maps_To_422_BusinessRuleViolation()
         {
             var resp = await _client.GetAsync("/api/_test/throw-derived-domain");
 
-            Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
-            var problem = await resp.Content.ReadFromJsonAsync<JsonElement>();
+            Assert.Equal(HttpStatusCode.UnprocessableEntity, resp.StatusCode);
+            var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
 
-            AssertCommonEnvelope(problem, expectedStatus: 400, expectedCode: "DOMAIN_RULE_VIOLATED", expectedInstance: "/api/_test/throw-derived-domain");
+            AssertErrorEnvelope(body, expectedCode: "BUSINESS_RULE_VIOLATION");
         }
 
         [Fact]
-        public async Task Concurrency_Conflict_Maps_To_409_With_Standard_Envelope()
+        public async Task Concurrency_Conflict_Maps_To_409_With_ErrorEnvelope()
         {
             var resp = await _client.GetAsync("/api/_test/throw-concurrency");
 
             Assert.Equal(HttpStatusCode.Conflict, resp.StatusCode);
-            var problem = await resp.Content.ReadFromJsonAsync<JsonElement>();
+            var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
 
-            AssertCommonEnvelope(problem, expectedStatus: 409, expectedCode: "CONCURRENCY_CONFLICT", expectedInstance: "/api/_test/throw-concurrency");
+            AssertErrorEnvelope(body, expectedCode: "CONFLICT");
         }
 
         [Fact]
@@ -95,38 +98,36 @@ namespace CleanArchitecture.Api.IntegrationTests
             var resp = await _client.GetAsync("/api/_test/throw");
 
             Assert.Equal(HttpStatusCode.InternalServerError, resp.StatusCode);
-            var body = await resp.Content.ReadAsStringAsync();
-            Assert.DoesNotContain("internal-secret-do-not-leak", body);
-            Assert.DoesNotContain("InvalidOperationException", body);
+            var raw = await resp.Content.ReadAsStringAsync();
+            Assert.DoesNotContain("internal-secret-do-not-leak", raw);
+            Assert.DoesNotContain("InvalidOperationException", raw);
 
-            var problem = JsonSerializer.Deserialize<JsonElement>(body);
-            AssertCommonEnvelope(problem, expectedStatus: 500, expectedCode: "INTERNAL_ERROR", expectedInstance: "/api/_test/throw");
+            var body = JsonSerializer.Deserialize<JsonElement>(raw);
+            AssertErrorEnvelope(body, expectedCode: "INTERNAL_ERROR");
         }
 
-        private static void AssertCommonEnvelope(
-            JsonElement problem,
-            int expectedStatus,
-            string expectedCode,
-            string? expectedInstance = null,
-            string? expectedInstancePrefix = null)
+        // Every error shares the §4.3 envelope: top-level traceId + timestamp and an
+        // error object with code + message. Clients branch on the HTTP status code.
+        private static void AssertErrorEnvelope(JsonElement body, string expectedCode)
         {
-            Assert.Equal(expectedStatus, problem.GetProperty("status").GetInt32());
-            Assert.False(string.IsNullOrWhiteSpace(problem.GetProperty("title").GetString()));
-            Assert.False(string.IsNullOrWhiteSpace(problem.GetProperty("type").GetString()));
-            Assert.Equal(expectedCode, problem.GetProperty("code").GetString());
-            Assert.False(string.IsNullOrWhiteSpace(problem.GetProperty("traceId").GetString()));
-            Assert.False(string.IsNullOrWhiteSpace(problem.GetProperty("timestamp").GetString()));
+            Assert.False(string.IsNullOrWhiteSpace(body.GetProperty("traceId").GetString()));
+            Assert.False(string.IsNullOrWhiteSpace(body.GetProperty("timestamp").GetString()));
 
-            var instance = problem.GetProperty("instance").GetString();
-            if (expectedInstance != null)
+            var error = body.GetProperty("error");
+            Assert.Equal(expectedCode, error.GetProperty("code").GetString());
+            Assert.False(string.IsNullOrWhiteSpace(error.GetProperty("message").GetString()));
+        }
+
+        private static bool HasFieldError(JsonElement details, string field)
+        {
+            foreach (var entry in details.EnumerateArray())
             {
-                Assert.Equal(expectedInstance, instance);
+                if (entry.GetProperty("field").GetString() == field)
+                {
+                    return true;
+                }
             }
-            else if (expectedInstancePrefix != null)
-            {
-                Assert.NotNull(instance);
-                Assert.StartsWith(expectedInstancePrefix, instance);
-            }
+            return false;
         }
 
         private async Task<Guid> CreateProductAsync(decimal price, int stock)
@@ -140,8 +141,8 @@ namespace CleanArchitecture.Api.IntegrationTests
             };
             var resp = await _client.PostAsJsonAsync("/api/products", payload);
             Assert.Equal(HttpStatusCode.Created, resp.StatusCode);
-            var dto = await resp.Content.ReadFromJsonAsync<JsonElement>();
-            return dto.GetProperty("id").GetGuid();
+            var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+            return body.GetProperty("data").GetProperty("id").GetGuid();
         }
     }
 }

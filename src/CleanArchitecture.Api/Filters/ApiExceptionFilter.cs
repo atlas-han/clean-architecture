@@ -1,7 +1,8 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
+using System.Linq;
 using CleanArchitecture.Api.Common;
+using CleanArchitecture.Api.Common.Responses;
 using CleanArchitecture.Application.Common.Exceptions;
 using CleanArchitecture.Domain.Exceptions;
 using Microsoft.AspNetCore.Http;
@@ -12,6 +13,9 @@ using Microsoft.Extensions.Logging;
 
 namespace CleanArchitecture.Api.Filters
 {
+    // Maps the sanctioned exception families (+ EF concurrency) to the §4.3
+    // ErrorResponse envelope using the §6.2 status/code mapping. Handlers never
+    // build a response by hand — they throw, and this filter shapes the reply.
     public class ApiExceptionFilter : ExceptionFilterAttribute
     {
         private readonly IDictionary<Type, Action<ExceptionContext>> _handlers;
@@ -54,66 +58,33 @@ namespace CleanArchitecture.Api.Filters
         private static void HandleValidation(ExceptionContext context)
         {
             var ex = (ValidationException)context.Exception;
-            var details = new ValidationProblemDetails(ex.Errors)
-            {
-                Title = "One or more validation errors occurred.",
-                Status = StatusCodes.Status400BadRequest,
-                Type = ErrorCodes.TypeValidationFailed,
-                Detail = "Request contains invalid fields. See 'errors' for details."
-            };
 
-            Enrich(details, context, ErrorCodes.ValidationFailed);
+            // Flatten { field -> [messages] } into one { field, message } entry per
+            // message, as required by §4.3's details array.
+            var details = ex.Errors
+                .SelectMany(field => field.Value.Select(message => new FieldError(field.Key, message)))
+                .ToList();
 
-            context.Result = new BadRequestObjectResult(details);
-            context.ExceptionHandled = true;
+            Write(context, StatusCodes.Status400BadRequest, ErrorCodes.ValidationError,
+                "One or more validation errors occurred.", details);
         }
 
         private static void HandleNotFound(ExceptionContext context)
         {
-            var details = new ProblemDetails
-            {
-                Title = "The specified resource was not found.",
-                Status = StatusCodes.Status404NotFound,
-                Type = ErrorCodes.TypeResourceNotFound,
-                Detail = context.Exception.Message
-            };
-
-            Enrich(details, context, ErrorCodes.ResourceNotFound);
-
-            context.Result = new NotFoundObjectResult(details);
-            context.ExceptionHandled = true;
+            Write(context, StatusCodes.Status404NotFound, ErrorCodes.NotFound, context.Exception.Message);
         }
 
         private static void HandleDomain(ExceptionContext context)
         {
-            var details = new ProblemDetails
-            {
-                Title = "A domain rule was violated.",
-                Status = StatusCodes.Status400BadRequest,
-                Type = ErrorCodes.TypeDomainRuleViolated,
-                Detail = context.Exception.Message
-            };
-
-            Enrich(details, context, ErrorCodes.DomainRuleViolated);
-
-            context.Result = new BadRequestObjectResult(details);
-            context.ExceptionHandled = true;
+            // Business-rule violations map to 422 BUSINESS_RULE_VIOLATION (§6.2).
+            Write(context, StatusCodes.Status422UnprocessableEntity, ErrorCodes.BusinessRuleViolation,
+                context.Exception.Message);
         }
 
         private static void HandleConcurrency(ExceptionContext context)
         {
-            var details = new ProblemDetails
-            {
-                Title = "The resource was modified by another request.",
-                Status = StatusCodes.Status409Conflict,
-                Type = ErrorCodes.TypeConcurrencyConflict,
-                Detail = "The resource changed while this request was being processed. Refresh and retry."
-            };
-
-            Enrich(details, context, ErrorCodes.ConcurrencyConflict);
-
-            context.Result = new ConflictObjectResult(details);
-            context.ExceptionHandled = true;
+            Write(context, StatusCodes.Status409Conflict, ErrorCodes.Conflict,
+                "The resource changed while this request was being processed. Refresh and retry.");
         }
 
         private void HandleUnknown(ExceptionContext context)
@@ -123,29 +94,18 @@ namespace CleanArchitecture.Api.Filters
                 "Unhandled exception while processing {path}",
                 context.HttpContext.Request.Path);
 
-            var details = new ProblemDetails
-            {
-                Status = StatusCodes.Status500InternalServerError,
-                Title = "An error occurred while processing your request.",
-                Type = ErrorCodes.TypeInternalError,
-                Detail = "An unexpected error occurred. Reference traceId for support."
-            };
-
-            Enrich(details, context, ErrorCodes.InternalError);
-
-            context.Result = new ObjectResult(details)
-            {
-                StatusCode = StatusCodes.Status500InternalServerError
-            };
-            context.ExceptionHandled = true;
+            // Never leak internal detail (stack trace, DB message) to the client (§4.3).
+            // The traceId in the body ties the response to the logged exception.
+            Write(context, StatusCodes.Status500InternalServerError, ErrorCodes.InternalError,
+                "An unexpected error occurred. Reference traceId for support.");
         }
 
-        private static void Enrich(ProblemDetails details, ExceptionContext context, string code)
+        private static void Write(ExceptionContext context, int statusCode, string code, string message,
+            IReadOnlyList<FieldError>? details = null)
         {
-            details.Instance = context.HttpContext.Request.Path;
-            details.Extensions["code"] = code;
-            details.Extensions["traceId"] = Activity.Current?.Id ?? context.HttpContext.TraceIdentifier;
-            details.Extensions["timestamp"] = DateTime.UtcNow.ToString("o");
+            var body = ApiResult.Error(context.HttpContext, code, message, details);
+            context.Result = new ObjectResult(body) { StatusCode = statusCode };
+            context.ExceptionHandled = true;
         }
     }
 }

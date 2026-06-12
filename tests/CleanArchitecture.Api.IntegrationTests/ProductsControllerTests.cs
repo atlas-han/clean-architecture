@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Json;
@@ -21,10 +22,11 @@ namespace CleanArchitecture.Api.IntegrationTests
             });
         }
 
+        // Single-resource payloads live under the SuccessResponse `data` field (§4.2).
         private static async Task<Guid> ReadCreatedIdAsync(HttpResponseMessage resp)
         {
-            var dto = await resp.Content.ReadFromJsonAsync<JsonElement>();
-            return dto.GetProperty("id").GetGuid();
+            var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+            return body.GetProperty("data").GetProperty("id").GetGuid();
         }
 
         [Fact]
@@ -42,24 +44,24 @@ namespace CleanArchitecture.Api.IntegrationTests
             Assert.Equal(HttpStatusCode.Created, createResp.StatusCode);
             Assert.NotNull(createResp.Headers.Location);
 
-            var createdDto = await createResp.Content.ReadFromJsonAsync<JsonElement>();
-            var id = createdDto.GetProperty("id").GetGuid();
+            var created = (await createResp.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("data");
+            var id = created.GetProperty("id").GetGuid();
             Assert.NotEqual(Guid.Empty, id);
-            Assert.Equal(payload.name, createdDto.GetProperty("name").GetString());
-            Assert.Equal(payload.price, createdDto.GetProperty("price").GetDecimal());
-            Assert.Equal(payload.stock, createdDto.GetProperty("stock").GetInt32());
+            Assert.Equal(payload.name, created.GetProperty("name").GetString());
+            Assert.Equal(payload.price, created.GetProperty("price").GetDecimal());
+            Assert.Equal(payload.stock, created.GetProperty("stock").GetInt32());
 
             var getResp = await _client.GetAsync($"/api/products/{id}");
             Assert.Equal(HttpStatusCode.OK, getResp.StatusCode);
 
-            var dto = await getResp.Content.ReadFromJsonAsync<JsonElement>();
-            Assert.Equal(payload.name, dto.GetProperty("name").GetString());
-            Assert.Equal(payload.price, dto.GetProperty("price").GetDecimal());
-            Assert.Equal(payload.stock, dto.GetProperty("stock").GetInt32());
+            var data = (await getResp.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("data");
+            Assert.Equal(payload.name, data.GetProperty("name").GetString());
+            Assert.Equal(payload.price, data.GetProperty("price").GetDecimal());
+            Assert.Equal(payload.stock, data.GetProperty("stock").GetInt32());
         }
 
         [Fact]
-        public async Task GetAll_ReturnsPagedEnvelope()
+        public async Task GetAll_ReturnsSuccessEnvelope_With_DataArray_And_Meta()
         {
             var payload = new
             {
@@ -76,28 +78,37 @@ namespace CleanArchitecture.Api.IntegrationTests
 
             var envelope = await listResp.Content.ReadFromJsonAsync<JsonElement>();
             Assert.Equal(JsonValueKind.Object, envelope.ValueKind);
-            Assert.Equal(JsonValueKind.Array, envelope.GetProperty("items").ValueKind);
-            Assert.True(envelope.GetProperty("totalCount").GetInt32() >= 1);
-            Assert.Equal(1, envelope.GetProperty("page").GetInt32());
-            Assert.Equal(100, envelope.GetProperty("pageSize").GetInt32());
-            Assert.True(envelope.TryGetProperty("totalPages", out _));
-            Assert.True(envelope.TryGetProperty("hasPrevious", out _));
-            Assert.True(envelope.TryGetProperty("hasNext", out _));
+            Assert.False(string.IsNullOrWhiteSpace(envelope.GetProperty("traceId").GetString()));
+            // List payload is a bare array under `data` (§4.2).
+            Assert.Equal(JsonValueKind.Array, envelope.GetProperty("data").ValueKind);
+
+            // Pagination lives in `meta` (§4.2/§4.5 PaginationMeta).
+            var meta = envelope.GetProperty("meta");
+            Assert.True(meta.GetProperty("totalCount").GetInt32() >= 1);
+            Assert.Equal(1, meta.GetProperty("page").GetInt32());
+            Assert.Equal(100, meta.GetProperty("pageSize").GetInt32());
+            Assert.True(meta.TryGetProperty("totalPages", out _));
         }
 
         [Fact]
-        public async Task Create_InvalidPayload_Returns_400_With_ValidationProblemDetails()
+        public async Task Create_InvalidPayload_Returns_400_With_FieldErrors()
         {
             var payload = new { name = "", description = "", price = -1m, stock = -1 };
 
             var resp = await _client.PostAsJsonAsync("/api/products", payload);
 
             Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
-            var problem = await resp.Content.ReadFromJsonAsync<JsonElement>();
-            Assert.True(problem.TryGetProperty("errors", out var errors));
-            Assert.True(errors.TryGetProperty("Name", out _));
-            Assert.True(errors.TryGetProperty("Price", out _));
-            Assert.True(errors.TryGetProperty("Stock", out _));
+            var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+            Assert.Equal("VALIDATION_ERROR", body.GetProperty("error").GetProperty("code").GetString());
+
+            var fields = new HashSet<string>();
+            foreach (var entry in body.GetProperty("error").GetProperty("details").EnumerateArray())
+            {
+                fields.Add(entry.GetProperty("field").GetString()!);
+            }
+            Assert.Contains("Name", fields);
+            Assert.Contains("Price", fields);
+            Assert.Contains("Stock", fields);
         }
 
         [Fact]
