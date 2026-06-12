@@ -36,7 +36,7 @@ if (builder.Environment.IsDevelopment() || builder.Environment.IsEnvironment("Lo
 }
 
 builder.Services.AddApplication();
-builder.Services.AddInfrastructure(builder.Configuration);
+builder.Services.AddInfrastructure(builder.Configuration, builder.Environment);
 
 // §7.4 step 3: lets DeadlinePropagationHandler read the inbound request's deadline so it can
 // re-propagate X-Request-Deadline to downstream HttpClient calls. Attach the handler to any

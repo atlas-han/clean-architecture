@@ -11,7 +11,8 @@ namespace CleanArchitecture.Infrastructure.Idempotency
     // IIdempotencyStore backed by IDistributedCache (API design guide §7.1 — "Redis 또는 DB에 저장").
     // In production IDistributedCache is Redis (AddStackExchangeRedisCache); dev/test fall back to an
     // in-memory distributed cache (AddDistributedMemoryCache) so no Redis server is needed. Entries
-    // expire after KeyLifetime (24h, §7.1); an expired/absent key reads back as null → a new request.
+    // expire after the configured key lifetime (Idempotency:KeyLifetime, default 24h — §7.1); an
+    // expired/absent key reads back as null → a new request.
     //
     // NOTE: TryBeginAsync is get-then-set, not one atomic operation. A production Redis store would
     // claim the key atomically with SET key value NX PX (StackExchange.Redis StringSet(..., When.NotExists))
@@ -19,15 +20,19 @@ namespace CleanArchitecture.Infrastructure.Idempotency
     // sample the small window is acceptable and documented.
     public class DistributedCacheIdempotencyStore : IIdempotencyStore
     {
-        private static readonly TimeSpan KeyLifetime = TimeSpan.FromHours(24);
         private const string KeyPrefix = "idempotency:";
 
         private readonly IDistributedCache _cache;
+        private readonly TimeSpan _keyLifetime;
 
-        public DistributedCacheIdempotencyStore(IDistributedCache cache)
+        public DistributedCacheIdempotencyStore(IDistributedCache cache, TimeSpan keyLifetime)
         {
             _cache = cache;
+            _keyLifetime = keyLifetime;
         }
+
+        // The effective time-to-live applied to every entry written to the cache (§7.1).
+        public TimeSpan KeyLifetime => _keyLifetime;
 
         public async Task<IdempotencyRecord?> GetAsync(string key, CancellationToken cancellationToken)
         {
@@ -61,7 +66,7 @@ namespace CleanArchitecture.Infrastructure.Idempotency
         private Task SetAsync(string cacheKey, IdempotencyRecord record, CancellationToken cancellationToken)
         {
             var json = JsonSerializer.Serialize(record);
-            var options = new DistributedCacheEntryOptions { AbsoluteExpirationRelativeToNow = KeyLifetime };
+            var options = new DistributedCacheEntryOptions { AbsoluteExpirationRelativeToNow = _keyLifetime };
             return _cache.SetStringAsync(cacheKey, json, options, cancellationToken);
         }
     }

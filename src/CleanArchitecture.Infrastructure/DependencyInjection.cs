@@ -1,3 +1,4 @@
+using System;
 using CleanArchitecture.Application.Common.Interfaces;
 using CleanArchitecture.Infrastructure.BackgroundServices;
 using CleanArchitecture.Infrastructure.Idempotency;
@@ -5,8 +6,10 @@ using CleanArchitecture.Infrastructure.Persistence;
 using CleanArchitecture.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
+using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 
 namespace CleanArchitecture.Infrastructure
 {
@@ -14,7 +17,8 @@ namespace CleanArchitecture.Infrastructure
     {
         public static IServiceCollection AddInfrastructure(
             this IServiceCollection services,
-            IConfiguration configuration)
+            IConfiguration configuration,
+            IHostEnvironment environment)
         {
             var connectionString = configuration.GetConnectionString("DefaultConnection");
 
@@ -59,20 +63,43 @@ namespace CleanArchitecture.Infrastructure
             services.AddHostedService<DemoBatchWorker>();
 
             // Idempotency-Key store (§7.1). Backed by a distributed cache so the dedup guarantee
-            // holds across instances: Redis when configured (ConnectionStrings:Redis), else an
-            // in-memory distributed cache so dev/test (and the WebApplicationFactory integration
-            // tests) run without a Redis server — mirrors the DefaultConnection → InMemory EF
-            // fallback above. The store is a stateless wrapper over the singleton cache.
+            // holds across instances: Redis when configured (ConnectionStrings:Redis). The in-memory
+            // distributed cache fallback is allowed only in Development/Local, so dev/test (and the
+            // WebApplicationFactory integration tests) run without a Redis server — mirroring the
+            // DefaultConnection → InMemory EF fallback above. Outside Development/Local a missing
+            // Redis connection string is a configuration error and we fail fast at startup rather
+            // than silently degrading to a process-local cache that does not dedup across instances
+            // and leaves Redis empty. The store is a stateless wrapper over the singleton cache.
             var redisConnection = configuration.GetConnectionString("Redis");
             if (string.IsNullOrWhiteSpace(redisConnection))
             {
+                if (!environment.IsDevelopment() && !environment.IsEnvironment("Local"))
+                {
+                    throw new InvalidOperationException(
+                        "ConnectionStrings:Redis is required in the '" + environment.EnvironmentName +
+                        "' environment: the Idempotency-Key store must be backed by Redis outside " +
+                        "Development/Local. Configure ConnectionStrings:Redis, or run in Development/Local.");
+                }
+
                 services.AddDistributedMemoryCache();
             }
             else
             {
                 services.AddStackExchangeRedisCache(options => options.Configuration = redisConnection);
             }
-            services.AddSingleton<IIdempotencyStore, DistributedCacheIdempotencyStore>();
+
+            // Idempotency key lifetime (§7.1), configurable via Idempotency:KeyLifetime (a TimeSpan,
+            // e.g. "1.00:00:00" = 24h). Parsed with the indexer + TimeSpan.TryParse to avoid the
+            // Configuration.Binder package (same approach as Maintenance:Enabled above); an absent,
+            // unparseable, or non-positive value falls back to the 24h default.
+            var keyLifetime = TimeSpan.TryParse(configuration["Idempotency:KeyLifetime"], out var parsedLifetime)
+                && parsedLifetime > TimeSpan.Zero
+                    ? parsedLifetime
+                    : TimeSpan.FromHours(24);
+            services.AddSingleton<IIdempotencyStore>(provider =>
+                new DistributedCacheIdempotencyStore(
+                    provider.GetRequiredService<IDistributedCache>(),
+                    keyLifetime));
 
             // /health checks. "database" verifies DB reachability: AddSqlServer pings the real
             // SQL Server (SELECT 1) when DefaultConnection is configured; dev/test fall back to the

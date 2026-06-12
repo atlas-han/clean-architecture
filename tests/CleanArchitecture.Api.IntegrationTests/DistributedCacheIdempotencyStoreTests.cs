@@ -1,3 +1,4 @@
+using System;
 using System.Threading;
 using System.Threading.Tasks;
 using CleanArchitecture.Application.Common.Models;
@@ -16,7 +17,7 @@ namespace CleanArchitecture.Api.IntegrationTests
         private static DistributedCacheIdempotencyStore CreateStore()
         {
             var cache = new MemoryDistributedCache(Options.Create(new MemoryDistributedCacheOptions()));
-            return new DistributedCacheIdempotencyStore(cache);
+            return new DistributedCacheIdempotencyStore(cache, TimeSpan.FromHours(24));
         }
 
         [Fact]
