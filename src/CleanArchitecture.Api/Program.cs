@@ -86,6 +86,11 @@ app.UseHttpsRedirection();
 
 app.UseMiddleware<RequestLoggingMiddleware>();
 
+// Maintenance gate: while stopped, returns 503 for everything except /health and the
+// /admin/maintenance control endpoints. First gate after logging so a maintenance window
+// short-circuits before any deadline logic, and rejected requests are still access-logged.
+app.UseMiddleware<MaintenanceMiddleware>();
+
 // Inside the logging middleware so a deadline fast-fail (504) is still captured in the access log.
 app.UseMiddleware<DeadlinePropagationMiddleware>();
 

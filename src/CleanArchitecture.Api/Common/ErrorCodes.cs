@@ -12,5 +12,6 @@ namespace CleanArchitecture.Api.Common
         public const string BusinessRuleViolation = "BUSINESS_RULE_VIOLATION"; // 422
         public const string DeadlineExceeded = "DEADLINE_EXCEEDED";            // 504 (§7.4)
         public const string InternalError = "INTERNAL_ERROR";                  // 500
+        public const string ServiceUnavailable = "SERVICE_UNAVAILABLE";        // 503 (maintenance)
     }
 }

@@ -1,4 +1,5 @@
 using CleanArchitecture.Application.Common.Interfaces;
+using CleanArchitecture.Infrastructure.BackgroundServices;
 using CleanArchitecture.Infrastructure.Persistence;
 using CleanArchitecture.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
@@ -40,6 +41,21 @@ namespace CleanArchitecture.Infrastructure
                 provider.GetRequiredService<ApplicationDbContext>());
 
             services.AddSingleton<IDateTime, DateTimeService>();
+
+            // Maintenance (stop/resume) switch: a shared in-memory singleton seeded from the
+            // configured default (Maintenance:Enabled). Toggled at runtime via the
+            // /admin/maintenance endpoints, so a maintenance window needs no redeploy. The
+            // demo batch worker observes the same singleton and skips its work while stopped.
+            // The seed is read lazily from the resolved IConfiguration (not eagerly here) so
+            // the final merged configuration wins — indexer + TryParse avoids pulling in the
+            // Configuration.Binder package, and a missing/invalid value defaults to false.
+            services.AddSingleton<IMaintenanceState>(provider =>
+            {
+                var config = provider.GetRequiredService<IConfiguration>();
+                bool.TryParse(config["Maintenance:Enabled"], out var enabled);
+                return new MaintenanceState(enabled);
+            });
+            services.AddHostedService<DemoBatchWorker>();
 
             // "database" check verifies the EF Core connection (CanConnect) for /health.
             services.AddHealthChecks()

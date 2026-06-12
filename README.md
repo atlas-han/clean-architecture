@@ -84,6 +84,78 @@ curl -X POST http://localhost:5000/api/products \
 curl http://localhost:5000/api/products
 ```
 
+## 점검 모드 (Stop / Resume)
+
+정기점검 시 **재배포 없이** API 와 백그라운드 배치를 동시에 멈췄다가 재개하는 런타임 스위치입니다.
+프로세스 내부의 공유 싱글톤(`IMaintenanceState`) 하나를 API 미들웨어·관리용 엔드포인트·배치 워커가 함께 바라봅니다.
+
+### 동작
+
+- **API**: 점검 중에는 `Api/Middleware/MaintenanceMiddleware.cs` 가 요청을 즉시 가로채
+  **`503 Service Unavailable`** + `Retry-After` 헤더 + 표준 `ErrorResponse` 봉투(`SERVICE_UNAVAILABLE`)로 응답합니다.
+  컨트롤러/핸들러까지 도달하지 않습니다.
+
+  ```http
+  HTTP/1.1 503 Service Unavailable
+  Retry-After: 120
+  Content-Type: application/json
+
+  {
+    "traceId": "0af7651916cd43dd8448eb211c80319c",
+    "timestamp": "2026-06-12T05:00:00.000Z",
+    "error": {
+      "code": "SERVICE_UNAVAILABLE",
+      "message": "Service is under maintenance. Please retry later."
+    }
+  }
+  ```
+
+- **항상 열려 있는 경로(점검 중에도 200)**:
+  - `GET /health` — 로드밸런서/오케스트레이터의 liveness·readiness 프로브가 죽지 않도록 **언제나** 정상 동작.
+  - `/admin/maintenance*` — 점검을 해제(resume)할 제어 경로가 막히면 안 되므로 면제.
+
+- **백그라운드 배치**: `Infrastructure/BackgroundServices/DemoBatchWorker.cs` 가 매 주기 시작에서
+  `IMaintenanceState.IsStopped` 를 확인하고, 점검 중이면 해당 틱 작업을 건너뜁니다(워커 자체는 살아 있음).
+  실제 배치를 추가할 때도 동일하게 작업 단위 앞에서 gate 를 확인하면 됩니다.
+
+### 사용 방법
+
+```bash
+# 점검 시작 — 이후 모든 /api 요청이 503
+curl -X POST http://localhost:5000/admin/maintenance/stop
+
+# 현재 상태 조회 -> {"stopped": true}
+curl http://localhost:5000/admin/maintenance
+
+# 점검 중에도 헬스체크는 정상
+curl http://localhost:5000/health        # 200
+
+# 점검 종료 — 정상 운영 복귀
+curl -X POST http://localhost:5000/admin/maintenance/resume
+```
+
+| Method | Path | 설명 |
+|--------|------|------|
+| POST | `/admin/maintenance/stop` | 점검 모드 진입 (API 503, 배치 일시정지) |
+| POST | `/admin/maintenance/resume` | 점검 모드 해제 (정상 운영) |
+| GET | `/admin/maintenance` | 현재 상태 조회 (`{"stopped": bool}`) |
+
+### 설정 (`appsettings.json`)
+
+```jsonc
+"Maintenance": {
+  "Enabled": false,        // 시작 시 기본 상태. true 면 부팅 직후부터 점검 모드
+  "RetryAfterSeconds": 120 // 503 응답의 Retry-After 헤더 값(초)
+}
+```
+
+- `Enabled` 는 **시작 시점의 기본값**일 뿐이며, 런타임 상태의 최종 권한은 위 엔드포인트에 있습니다.
+  재시작하면 다시 이 기본값으로 돌아갑니다(상태는 의도적으로 영속화하지 않음).
+- 상태는 **프로세스 메모리**에 보관됩니다. 다중 인스턴스로 배포한 경우 인스턴스마다 stop/resume 을 호출하세요.
+
+> ⚠️ 이 샘플에는 인증이 없습니다. 실제 배포에서는 `/admin/maintenance*` 를 **인증·네트워크 정책으로 보호**해
+> 운영자만 스위치를 조작할 수 있도록 해야 합니다.
+
 ## 예외 처리 흐름
 
 `Api/Filters/ApiExceptionFilter.cs` 한 곳에서 매핑:
