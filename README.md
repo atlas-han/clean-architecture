@@ -36,18 +36,22 @@ ASP.NET Core 9 (.NET 9) 기반 Clean Architecture 샘플 API. 언어는 C# 9 (`<
 | 기능 | 위치 |
 |------|------|
 | `record` (positional) | `CreateProductCommand`, `UpdateProductCommand`, `GetProductByIdQuery` 등 |
-| `record` + `init` properties | `ProductDto` |
+| `record` + `init` properties | `ProductDto`, `OrderDto`, `OrderItemDto` |
+| `record` 값 객체 (값 동등성 + 연산자 오버로드) | `Domain/ValueObjects/Money.cs` |
 | Top-level statements | `Api/Program.cs` (Startup 클래스 없음 — 최소 호스팅) |
 | Target-typed `new()` | DI 등록 등 |
 | Pattern matching (`is null`) | Command/Query 핸들러 |
 
 ## 사용 라이브러리
 
-- **자체 CQRS 디스패처** — `Application/Common/Messaging/` 에 `IRequest`, `IRequest<T>`, `IRequestHandler<>`, `IRequestHandler<,>`, `ISender`, `Sender` 를 직접 정의. 외부 NuGet 의존성 없음. `Sender` 가 `IServiceProvider` 로 핸들러를 찾고, FluentValidation 을 인라인으로 실행한 뒤 디스패치
-- **FluentValidation 11** — Command 검증 (`Sender` 안에서 자동 실행)
-- **AutoMapper 13** — `Product` → `ProductDto` `ProjectTo` 매핑
-- **EF Core 9 (InMemory)** — 영속성. 실제 DB 전환은 `Infrastructure/DependencyInjection.cs` 의 `UseInMemoryDatabase(...)` 한 줄만 교체
-- **Swashbuckle 7** — OpenAPI / Swagger UI
+- **자체 CQRS 디스패처** — `Application/Common/Messaging/` 에 `IRequest`, `IRequest<T>`, `IRequestHandler<>`, `IRequestHandler<,>`, `IPipelineBehavior<>` / `IPipelineBehavior<,>`, `ISender`, `Sender` 를 직접 정의. 외부 NuGet 의존성 없음. `Sender` 가 `IServiceProvider` 로 핸들러를 찾아 등록된 파이프라인 비헤이비어로 감싼 뒤 리플렉션으로 디스패치 (MediatR 미사용)
+- **FluentValidation 11** — Command/Query 검증. `Application/Common/Behaviors/ValidationBehavior.cs` 가 **파이프라인 비헤이비어**로 핸들러 앞단에서 자동 실행 → 실패 시 `Application.Common.Exceptions.ValidationException`
+- **수동 매핑 (AutoMapper 미사용)** — `Application/Common/Mappings/{ProductMappings, OrderMappings}.cs` 에 `Expression<Func<Entity, Dto>>` 를 직접 정의. EF Core 가 이 식을 그대로 SQL projection 으로 번역하므로 `ProjectTo` 와 동일한 효과를 NuGet 없이 얻습니다
+- **EF Core 9** — 영속성. `ConnectionStrings:DefaultConnection` 이 있으면 **SQL Server**, 없으면 **InMemory** 폴백 (`Infrastructure/DependencyInjection.cs`). 값 객체 `Money` 는 value converter 로 `decimal` 컬럼에 매핑
+- **Asp.Versioning.Mvc 8** — URI 기반 API 버저닝(`/api/v1/...`) + `X-Api-Version` 헤더, `api-supported-versions` 응답 헤더 광고
+- **HealthChecks (EFCore / SqlServer / Redis)** — `/health` 의 DB·Redis 연결 프로브
+- **Redis (StackExchange) 분산 캐시** — 멱등성 저장소. `ConnectionStrings:Redis` 가 있으면 Redis, 없으면 인메모리 분산 캐시 폴백
+- **Swashbuckle 7** — OpenAPI 스펙 생성(`AddSwaggerGen`). 단, `Program.cs` 의 `UseSwagger` / `UseSwaggerUI` 가 **주석 처리**되어 현재 UI·JSON 엔드포인트는 노출되지 않습니다
 
 ## 빌드 & 실행
 
@@ -60,28 +64,48 @@ dotnet run --project src/CleanArchitecture.Api
 기본 포트 (`launchSettings.json`):
 - HTTPS: https://localhost:5001
 - HTTP:  http://localhost:5000
-- Swagger UI: 루트(`/`) — `app.UseSwaggerUI(c => c.RoutePrefix = string.Empty)`
+- Swagger/OpenAPI: 스펙은 `AddSwaggerGen` 으로 구성돼 있으나 `Program.cs` 의 `UseSwagger` / `UseSwaggerUI` 호출이 **주석 처리**되어 현재 UI·JSON 엔드포인트는 노출되지 않습니다. 활성화하려면 해당 두 줄의 주석을 해제하세요.
 
 ## API 엔드포인트
 
+모든 리소스는 **URI 버저닝**(`/api/v{version}/...`) 아래 노출됩니다. `v1.0` 이 기본값이라 버전 세그먼트를 생략하면 v1 으로 해석되고, `X-Api-Version` 헤더로도 지정할 수 있습니다 (`Api/Controllers/ApiControllerBase.cs`). 성공 응답은 `data`(+ 페이징 시 `meta`)를, 오류 응답은 `error` 를 담은 **표준 봉투**로 내려갑니다 (아래 **표준 응답 봉투 & 에러 코드** 참조).
+
+### Products (`/api/v1/products`)
+
 | Method | Path | 응답 |
 |--------|------|------|
-| GET    | `/api/products?page=1&pageSize=20` | 200, `ProductDto[]` |
-| GET    | `/api/products/{id}` | 200 / 404 |
-| POST   | `/api/products` | 201, 생성된 `Guid` |
-| PUT    | `/api/products/{id}` | 204 / 400 / 404 |
-| DELETE | `/api/products/{id}` | 204 / 404 |
+| GET    | `/api/v1/products?page=1&pageSize=20` | 200, `SuccessResponse<ProductDto[]>` (+ `meta` 페이징) |
+| GET    | `/api/v1/products/{id}` | 200 `SuccessResponse<ProductDto>` / 404 |
+| POST   | `/api/v1/products` | 201, `SuccessResponse<ProductDto>` (+ `Location` 헤더) |
+| PUT    | `/api/v1/products/{id}` | 204 / 400 / 404 / **409**(동시성 충돌) |
+| DELETE | `/api/v1/products/{id}` | 204 / 404 |
+
+### Orders (`/api/v1/orders`)
+
+주문 애그리거트. 주문 생성 시 상품 재고를 차감하며, 상태 머신(`Pending → Confirmed | Cancelled`)을 도메인 불변식으로 강제합니다.
+
+| Method | Path | 응답 | 멱등성 |
+|--------|------|------|--------|
+| GET    | `/api/v1/orders?page=1&pageSize=20` | 200, `SuccessResponse<OrderDto[]>` (+ `meta`) | — |
+| GET    | `/api/v1/orders/{id}` | 200 `SuccessResponse<OrderDto>` / 404 | — |
+| POST   | `/api/v1/orders` | 201, `SuccessResponse<OrderDto>` | `[Idempotent]` |
+| POST   | `/api/v1/orders/place` | 201, `SuccessResponse<OrderDto>` | `[Idempotent]` |
+| POST   | `/api/v1/orders/{id}/confirm` | 204 / 404 / 422 | — |
+| POST   | `/api/v1/orders/{id}/cancel` | 204 / 404 / 422 | — |
+
+- **`POST /orders` vs `POST /orders/place`** — 둘 다 주문을 만들고 재고를 차감하지만, `create` 는 단일 `SaveChanges`(암시적 트랜잭션)로, `place` 는 `ExecuteInTransactionAsync` 로 재고 차감과 주문 저장을 **명시적 트랜잭션**으로 묶는 패턴을 보여줍니다(여러 번의 쓰기 사이에 작업이 끼어도 원자성 보장). 둘 다 `[Idempotent]` 라 `Idempotency-Key` 재시도는 원본 응답을 재생합니다.
+- **`confirm` / `cancel`** — 상태 전이만 수행(부수효과 없음). `confirm` 은 `Pending` 만 허용, `cancel` 은 이미 취소된 주문이면 거부 — 위반 시 도메인 불변식이 깨져 **422 `BUSINESS_RULE_VIOLATION`**. 취소는 **재고를 복구하지 않습니다**(샘플 단순화).
 
 ## 요청 예시
 
 ```bash
-# 생성
-curl -X POST http://localhost:5000/api/products \
+# 생성 → 201 SuccessResponse<ProductDto> (+ Location 헤더)
+curl -X POST http://localhost:5000/api/v1/products \
   -H "Content-Type: application/json" \
   -d '{"name":"Keyboard","description":"Mechanical","price":129000,"stock":50}'
 
-# 조회
-curl http://localhost:5000/api/products
+# 목록 조회 → 200 { "data": [ ... ], "meta": { page, pageSize, totalCount, totalPages } }
+curl http://localhost:5000/api/v1/products
 ```
 
 ## 점검 모드 (Stop / Resume)
@@ -140,7 +164,7 @@ curl -X POST http://localhost:5000/admin/maintenance/resume
 | POST | `/admin/maintenance/resume` | 점검 모드 해제 (정상 운영) |
 | GET | `/admin/maintenance` | 현재 상태 조회 (`{"stopped": bool}`) |
 
-### 설정 (`appsettings.json`)
+### 점검 설정 (`Maintenance`)
 
 ```jsonc
 "Maintenance": {
@@ -156,29 +180,79 @@ curl -X POST http://localhost:5000/admin/maintenance/resume
 > ⚠️ 이 샘플에는 인증이 없습니다. 실제 배포에서는 `/admin/maintenance*` 를 **인증·네트워크 정책으로 보호**해
 > 운영자만 스위치를 조작할 수 있도록 해야 합니다.
 
+## 표준 응답 봉투 & 에러 코드
+
+모든 응답은 API 디자인 가이드 §4.3 의 봉투로 통일됩니다 (`Api/Common/ApiResult.cs` + `Api/Common/Responses/ApiResponses.cs`). `traceId` 는 W3C trace-id(§4.4)라 응답을 서버 로그와 상관시킬 수 있습니다.
+
+**성공** — `SuccessResponse<T>` (`data`, 목록은 `meta` 페이징 동반):
+
+```json
+{
+  "traceId": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "timestamp": "2026-06-12T09:30:00.0000000Z",
+  "data": [ { "id": "…", "name": "Keyboard", "price": 129000, "stock": 50 } ],
+  "meta": { "page": 1, "pageSize": 20, "totalCount": 45, "totalPages": 3 }
+}
+```
+
+**오류** — `ErrorResponse` (`error.code` / `error.message`, 검증 오류는 `error.details[]` 의 필드별 메시지):
+
+```json
+{
+  "traceId": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "timestamp": "2026-06-12T09:30:00.0000000Z",
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "One or more validation errors occurred.",
+    "details": [ { "field": "name", "message": "Name must not be empty." } ]
+  }
+}
+```
+
+`error.code` 는 §6.2 매핑(`Api/Common/ErrorCodes.cs`): `VALIDATION_ERROR`(400) · `NOT_FOUND`(404) · `CONFLICT`(409) · `BUSINESS_RULE_VIOLATION`(422) · `DEADLINE_EXCEEDED`(504) · `SERVICE_UNAVAILABLE`(503) · `INTERNAL_ERROR`(500).
+
 ## 예외 처리 흐름
 
-`Api/Filters/ApiExceptionFilter.cs` 한 곳에서 매핑:
+`Api/Filters/ApiExceptionFilter.cs` 한 곳에서 허용된 예외군을 위 `ErrorResponse` 봉투로 매핑합니다 (핸들러/컨트롤러는 응답을 직접 만들지 않고 던지기만 합니다). 파생 예외는 타입 계층을 따라 베이스 타입 매핑을 상속합니다.
 
-| 예외 | 응답 |
-|------|------|
-| `Application.Common.Exceptions.ValidationException` (FluentValidation 실패) | 400 + `ValidationProblemDetails` |
-| `Application.Common.Exceptions.NotFoundException` | 404 + `ProblemDetails` |
-| `Domain.Exceptions.DomainException` | 400 + `ProblemDetails` (도메인 불변식 위반) |
-| 그 외 | 500 + `ProblemDetails` |
+| 예외 | 상태 | `error.code` |
+|------|------|--------------|
+| `Application.Common.Exceptions.ValidationException` (FluentValidation 실패) | 400 | `VALIDATION_ERROR` (+ `details[]`) |
+| `Application.Common.Exceptions.NotFoundException` | 404 | `NOT_FOUND` |
+| `Domain.Exceptions.DomainException` (도메인 불변식 위반) | **422** | `BUSINESS_RULE_VIOLATION` |
+| `DbUpdateConcurrencyException` (낙관적 동시성 충돌) | 409 | `CONFLICT` |
+| `OperationCanceledException` — deadline 소진 | 504 | `DEADLINE_EXCEEDED` |
+| `OperationCanceledException` — 클라이언트 disconnect | 499 | (본문 없음 — 서버 오류로 로깅하지 않음) |
+| 그 외 | 500 | `INTERNAL_ERROR` (내부 상세 비노출, `traceId` 로 로그 상관) |
+
+## 낙관적 동시성 (Optimistic Concurrency)
+
+재고 동시 차감으로 인한 **오버셀링**을 막기 위해 `Product.Stock` 을 EF Core **동시성 토큰**으로 둡니다 (`Infrastructure/Persistence/Configurations/ProductConfiguration.cs` 의 `.IsConcurrencyToken()` — 별도 RowVersion 컬럼 없이 비즈니스 값 자체가 토큰). 두 요청이 같은 재고를 읽고 동시에 갱신하면 나중 `SaveChanges` 가 `DbUpdateConcurrencyException` 을 던지고, `ApiExceptionFilter` 가 이를 **409 `CONFLICT`** 로 매핑합니다(클라이언트는 새로 읽어 재시도). `ProductConcurrencyTests` 가 stale write 거부를 검증합니다.
 
 ## 요청 파이프라인
 
+미들웨어 순서 (`Api/Program.cs`) — 보안 헤더가 가장 바깥이라 점검(503)·deadline(504) 단락 응답에도 헤더가 붙고, deadline 게이트는 로깅 미들웨어 *안쪽* 이라 fast-fail 도 access log 에 남습니다:
+
 ```
 HTTP request
-  → [ApiController] 모델 바인딩
-    → ProductsController.Method
-      → ISender.Send(command)                      ◄ Application/Common/Messaging/Sender
-        → FluentValidation 인라인 실행             ◄ Sender.ValidateAsync (전 ValidationBehavior)
-          → CreateProductCommandHandler            ◄ 실제 비즈니스 로직 (리플렉션 디스패치)
+  → SecurityHeadersMiddleware        ◄ nosniff / X-Frame-Options / X-XSS-Protection / CSP (§9.1)
+  → RequestLoggingMiddleware         ◄ JSON access log + 헤더/PII 마스킹 (§14)
+  → MaintenanceMiddleware            ◄ 점검 중이면 503 (단, /health · /admin/maintenance* 면제)
+  → DeadlinePropagationMiddleware    ◄ X-Request-Deadline 잔여 예산 < 50ms 면 504 fast-fail (§7.4)
+  → [ApiController] 모델 바인딩 (+ IdempotencyFilter — [Idempotent] 액션)
+    → Controller.Method
+      → ISender.Send(request, DeadlineToken)      ◄ Application/Common/Messaging/Sender
+        → ValidationBehavior (IPipelineBehavior)  ◄ FluentValidation → 실패 시 ValidationException
+          → <Request>Handler                      ◄ 실제 비즈니스 로직 (리플렉션 디스패치)
             → IApplicationDbContext.SaveChangesAsync
               → ApplicationDbContext.ApplyAuditFields  ◄ CreatedAt/UpdatedAt 자동
 ```
+
+(개발/Local 환경은 앞단에 `UseDeveloperExceptionPage`, 비-개발 환경은 `UseHsts` 가 추가됩니다. 라우팅 뒤에는 `MapControllers` 와 `MapHealthChecks("/health")`.)
+
+## Graceful Shutdown
+
+SIGTERM / Ctrl+C 수신 시 in-flight 요청이 끝날 때까지 호스트 종료를 지연합니다 (`Program.cs` 의 `HostOptions.ShutdownTimeout`). 기본 30초이며 `Shutdown:Timeout`(예: `"00:00:30"`)으로 조정합니다. `ApplicationStopping` 에서 "draining in-flight requests" 를, 드레인/타임아웃 후 `ApplicationStopped` 를 로깅합니다. `GracefulShutdownTests` 가 두 라이프사이클 이벤트와 기본 30초 타임아웃을 검증합니다.
 
 ## 요청 Deadline 전파 (`X-Request-Deadline`)
 
@@ -211,7 +285,7 @@ HTTP request
 
 ```bash
 # 이미 지난 deadline → 504 DEADLINE_EXCEEDED (fast-fail)
-curl -i http://localhost:5000/api/products \
+curl -i http://localhost:5000/api/v1/products \
   -H "X-Request-Deadline: 1000000000000"
 ```
 
@@ -290,18 +364,86 @@ curl -i -X POST http://localhost:5000/api/v1/orders/place \
 
 > ⚠️ 현재 키 선점(`TryBeginAsync`)은 get-then-set 이라 미세한 경합 창이 있습니다. 운영 Redis 에서는 `SET key val NX PX`(원자적 set-if-absent)로 교체하는 것이 정석입니다(코드 주석에 후속으로 표기). 또한 replay 는 status / Content-Type / body / Location 만 재현하며, 그 밖의 응답 헤더는 보존하지 않습니다.
 
+## Health Check (`/health`)
+
+로드밸런서·오케스트레이터 프로브용 엔드포인트로, 점검 모드에서도 **항상 200 경로**입니다. 커스텀 JSON 으로 각 체크 결과를 내려줍니다 (`Program.cs` 의 `MapHealthChecks` ResponseWriter):
+
+```json
+{
+  "status": "Healthy",
+  "checks": [
+    { "name": "application", "status": "Healthy", "description": "Application is running" },
+    { "name": "database", "status": "Healthy", "description": null }
+  ]
+}
+```
+
+| 체크 | 등록 조건 | 내용 |
+|------|-----------|------|
+| `application` | 항상 | liveness — 프로세스 생존 (`Program.cs`) |
+| `database` | 항상 | `DefaultConnection` 설정 시 `AddSqlServer`(SELECT 1), 미설정 시 `AddDbContextCheck`(InMemory) |
+| `redis` | `ConnectionStrings:Redis` 설정 시에만 | Redis ping. 미설정(개발/테스트)이면 체크를 등록하지 않아 `/health` 는 Healthy 유지 |
+
+연결 문자열이 없는 개발/테스트에서도 폴백 백엔드로 green 을 유지하도록 설계되었습니다.
+
+## 보안 헤더 (Security Headers)
+
+`Api/Middleware/SecurityHeadersMiddleware.cs` 가 **모든** 응답에 아래 헤더를 추가합니다 (파이프라인 최바깥이라 503/504 단락 응답에도 적용, §9.1):
+
+| 헤더 | 값 |
+|------|-----|
+| `X-Content-Type-Options` | `nosniff` |
+| `X-Frame-Options` | `SAMEORIGIN` |
+| `X-XSS-Protection` | `1; mode=block` |
+| `Content-Security-Policy` | `default-src 'self'; frame-ancestors 'self'` |
+
+추가로 비-개발 환경에서는 `UseHsts()` 가 `Strict-Transport-Security`(max-age 365d, includeSubDomains, preload)를 붙입니다. HSTS 는 HTTPS 에서만 의미가 있어 개발/Local 에서는 제외됩니다.
+
+## 액세스 로그 & 민감정보 마스킹
+
+`Api/Middleware/RequestLoggingMiddleware.cs` 가 요청마다 한 줄의 **구조화 JSON 로그**(`Api/Logging/JsonConsoleFormatter.cs`, formatter name `unified_json`)를 남깁니다. 콘솔 로깅은 `Program.cs` 에서 이 포매터로 고정됩니다 (가이드 §14.3 / §14.6).
+
+- **기록 필드(snake_case)**: `timestamp`, `level`, `method`, `pathname`, `status_code`, `latency_ms`, `req_body_bytes`, `res_body_bytes`, `remote_addr`, `trace_id`, `span_id`, `request_id`, `endpoint_handler`, 요청/응답 헤더(`req_header_*` / `res_header_*`). 예외 시 `error_type` / `exception.*` 추가.
+- **요청 ID**: `X-Request-Id`/`X-Correlation-Id` 등 인입 상관 ID 를 재사용, 없으면 UUIDv7 생성 → 응답 `X-Request-Id` 헤더로 반향.
+- **헤더 마스킹** (`Api/Logging/HeaderMasker.cs`): `Authorization`, `Proxy-Authorization`, `Cookie`, `Set-Cookie`, `X-Api-Key` 값을 `***` 로 가림.
+- **본문 PII 마스킹** (`Api/Logging/PiiMasker.cs`, 본문은 `Debug` 레벨에서만 로깅): `customerName`, `email`, `phone`, `password`, `ssn`, `cardNumber`, `cvv`, `dateOfBirth` 등 키의 문자열은 첫 글자만 남기고 마스킹 — 중첩 깊이 무관·대소문자 무시.
+
+## 설정 (`appsettings.json`)
+
+| 키 | 기본값 | 의미 |
+|----|--------|------|
+| `ConnectionStrings:DefaultConnection` | `""` | 있으면 SQL Server, 없으면 EF InMemory 폴백 |
+| `ConnectionStrings:Redis` | (없음) | 있으면 Redis 분산 캐시, 없으면 인메모리 폴백(개발/Local). **비-개발 환경에서 미설정 시 부팅 실패**(fail-fast) |
+| `Shutdown:Timeout` | `00:00:30` | graceful shutdown 드레인 한도 |
+| `Maintenance:Enabled` | `false` | 시작 시 점검 모드 기본값(런타임 토글) |
+| `Maintenance:RetryAfterSeconds` | `120` | 점검 503 의 `Retry-After`(초) |
+| `Idempotency:KeyLifetime` | `1.00:00:00` | 멱등성 키 TTL(24h) |
+| `Logging:Console:FormatterName` | `unified_json` | 구조화 JSON 콘솔 로그 |
+
+로컬 SQL Server/Redis 자격증명은 `.env`(템플릿 `.env.example`)로 주입합니다.
+
+## 로컬 개발 & DB 마이그레이션
+
+기본값(연결 문자열 없음)에서는 EF InMemory + 인메모리 캐시라 **외부 의존성 없이** 곧바로 실행됩니다. 실제 SQL Server 로 전환할 때 스키마는 **Flyway**(Docker)로 관리합니다:
+
+- `docker-compose.yml` — Flyway 러너. `host.docker.internal:1433` 의 로컬 MSSQL 에 접속하며 자격증명은 `.env` 에서 주입(`.env.example` 복사 후 수정).
+- `db/` — `V1__init_schema.sql`(초기 DDL), `flyway.conf`.
+- `scripts/` — `db-migrate.sh`(migrate) · `db-validate.sh`(validate) · `db-info.sh`(info).
+- `postman/` — API 컬렉션 + 환경 변수(`*.postman_collection.json`, `*.postman_environment.json`).
+- `docs/order-feature-spec.md` — Order 애그리거트 스펙(도메인 모델·CQRS·엔드포인트·테스트 범위).
+
 ## 테스트
 
 xUnit 만 사용 (외부 어설션·모킹 라이브러리 없음). 3개 테스트 프로젝트:
 
 | 프로젝트 | 대상 | 격리 방식 |
 |----------|------|-----------|
-| `Domain.UnitTests` | `Product` 엔티티 불변식 / 동작 | 외부 의존성 0 |
-| `Application.UnitTests` | Command/Query 핸들러, FluentValidation 검증기 | `TestDoubles/TestDbContext` (`IApplicationDbContext` 구현) + EF Core InMemory. 테스트마다 새 GUID DB 이름으로 격리 |
-| `Api.IntegrationTests` | HTTP 파이프라인 전체 (필터·검증·매핑·EF Core) | `WebApplicationFactory<Program>` — `public partial class Program {}` 가 진입점 노출 |
+| `Domain.UnitTests` | `Product` / `Order` / `OrderItem` 엔티티 불변식 + `Money` 값 객체 | 외부 의존성 0 |
+| `Application.UnitTests` | Products·Orders Command/Query 핸들러, FluentValidation 검증기 | `TestDoubles/TestDbContext` (`IApplicationDbContext` 구현) + EF Core InMemory. 테스트마다 새 GUID DB 이름으로 격리 |
+| `Api.IntegrationTests` | HTTP 파이프라인 전체 (필터·검증·매핑·동시성·점검·deadline·멱등성·헬스·보안헤더·access log·graceful shutdown) | `WebApplicationFactory<Program>` — `public partial class Program {}` 가 진입점 노출 |
 
 ```bash
-dotnet test                                           # 전체 (91 tests)
+dotnet test                                           # 전체 (219 tests: Domain 42 / Application 64 / Api 113)
 dotnet test tests/CleanArchitecture.Domain.UnitTests          # Domain만
 dotnet test tests/CleanArchitecture.Application.UnitTests     # Application만
 dotnet test tests/CleanArchitecture.Api.IntegrationTests      # API 통합만
@@ -320,53 +462,68 @@ dotnet test tests/CleanArchitecture.Api.IntegrationTests      # API 통합만
 ```
 clean-architecture/
 ├── clean-architecture.sln
-├── README.md
-└── src/
-    ├── CleanArchitecture.Domain/
-    │   ├── Common/BaseEntity.cs
-    │   ├── Entities/Product.cs
-    │   └── Exceptions/DomainException.cs
-    │
-    ├── CleanArchitecture.Application/
-    │   ├── DependencyInjection.cs
-    │   ├── Common/
-    │   │   ├── Messaging/{IRequest, IRequestHandler, ISender, Sender}.cs  ◄ 자체 CQRS 디스패처
-    │   │   ├── Exceptions/{NotFoundException, ValidationException}.cs
-    │   │   ├── Interfaces/{IApplicationDbContext, IDateTime}.cs
-    │   │   └── Mappings/MappingProfile.cs
-    │   └── Products/
-    │       ├── Commands/
-    │       │   ├── CreateProduct/{Command, Handler, Validator}.cs
-    │       │   ├── UpdateProduct/{Command, Handler, Validator}.cs
-    │       │   └── DeleteProduct/{Command, Handler}.cs
-    │       └── Queries/
-    │           ├── Dtos/ProductDto.cs
-    │           ├── GetProductById/{Query, Handler}.cs
-    │           └── GetProducts/{Query, Handler}.cs
-    │
-    ├── CleanArchitecture.Infrastructure/
-    │   ├── DependencyInjection.cs
-    │   ├── Persistence/
-    │   │   ├── ApplicationDbContext.cs
-    │   │   └── Configurations/ProductConfiguration.cs
-    │   └── Services/DateTimeService.cs
-    │
-    └── CleanArchitecture.Api/
-        ├── Program.cs          ◄ 최소 호스팅, 끝에 `public partial class Program {}`
-        ├── appsettings*.json
-        ├── Properties/launchSettings.json
-        ├── Controllers/{ApiControllerBase, ProductsController}.cs
-        └── Filters/ApiExceptionFilter.cs
-
-tests/
-├── CleanArchitecture.Domain.UnitTests/
-│   └── Entities/ProductTests.cs
-├── CleanArchitecture.Application.UnitTests/
-│   ├── TestDoubles/{TestDbContext, TestDbContextFactory}.cs
-│   └── Products/
-│       ├── Commands/CreateProduct/{HandlerTests, ValidatorTests}.cs
-│       ├── Commands/UpdateProduct/HandlerTests.cs
-│       └── Queries/GetProductByIdQueryHandlerTests.cs
-└── CleanArchitecture.Api.IntegrationTests/
-    └── ProductsControllerTests.cs
+├── global.json                       ◄ .NET 9 SDK 핀
+├── README.md  ·  CLAUDE.md
+├── docker-compose.yml  ·  .env.example   ◄ Flyway 러너 + 로컬 DB 자격증명 템플릿
+├── db/                               ◄ V1__init_schema.sql, flyway.conf
+├── scripts/                          ◄ db-migrate.sh / db-validate.sh / db-info.sh
+├── postman/                          ◄ collection + environment json
+├── docs/order-feature-spec.md
+│
+├── src/
+│   ├── CleanArchitecture.Domain/
+│   │   ├── Common/BaseEntity.cs
+│   │   ├── Entities/{Product, Order, OrderItem}.cs
+│   │   ├── Enums/OrderStatus.cs
+│   │   ├── ValueObjects/Money.cs
+│   │   └── Exceptions/DomainException.cs
+│   │
+│   ├── CleanArchitecture.Application/
+│   │   ├── DependencyInjection.cs
+│   │   ├── Common/
+│   │   │   ├── Messaging/{IRequest, IRequestHandler, IPipelineBehavior, ISender, Sender}.cs  ◄ 자체 CQRS 디스패처
+│   │   │   ├── Behaviors/ValidationBehavior.cs
+│   │   │   ├── Exceptions/{NotFoundException, ValidationException}.cs
+│   │   │   ├── Interfaces/{IApplicationDbContext, IDateTime, IIdempotencyStore, IMaintenanceState}.cs
+│   │   │   ├── Mappings/{ProductMappings, OrderMappings}.cs       ◄ Expression 수동 매핑
+│   │   │   └── Models/{PagedResult, IdempotencyRecord}.cs
+│   │   ├── Products/Commands/{CreateProduct, UpdateProduct, DeleteProduct}/{Command, Handler, Validator}.cs
+│   │   ├── Products/Queries/{Dtos/ProductDto, GetProductById, GetProducts}/…
+│   │   ├── Orders/Commands/{CreateOrder, PlaceOrder, ConfirmOrder, CancelOrder}/{Command, Handler, Validator}.cs
+│   │   └── Orders/Queries/{Dtos/{OrderDto, OrderItemDto}, GetOrderById, GetOrders}/…
+│   │
+│   ├── CleanArchitecture.Infrastructure/
+│   │   ├── DependencyInjection.cs                 ◄ SQL/InMemory · Redis/메모리 폴백 · 헬스체크
+│   │   ├── BackgroundServices/DemoBatchWorker.cs
+│   │   ├── Idempotency/DistributedCacheIdempotencyStore.cs
+│   │   ├── Persistence/ApplicationDbContext.cs
+│   │   ├── Persistence/Configurations/{Product, Order, OrderItem}Configuration.cs
+│   │   └── Services/{DateTimeService, MaintenanceState}.cs
+│   │
+│   └── CleanArchitecture.Api/
+│       ├── Program.cs          ◄ 최소 호스팅, 끝에 `public partial class Program {}`
+│       ├── appsettings*.json  ·  Properties/launchSettings.json
+│       ├── Common/{ApiResult, ErrorCodes, HttpContextExtensions}.cs  ·  Common/Responses/ApiResponses.cs
+│       ├── Controllers/{ApiControllerBase, ProductsController, OrdersController, MaintenanceController}.cs
+│       ├── Filters/ApiExceptionFilter.cs
+│       ├── Http/DeadlinePropagationHandler.cs
+│       ├── Idempotency/{IdempotentAttribute, IdempotencyFilter}.cs
+│       ├── Logging/{JsonConsoleFormatter, HeaderMasker, PiiMasker}.cs
+│       └── Middleware/{SecurityHeaders, RequestLogging, Maintenance, DeadlinePropagation}Middleware.cs
+│
+└── tests/
+    ├── CleanArchitecture.Domain.UnitTests/
+    │   ├── Entities/{ProductTests, OrderTests}.cs
+    │   └── ValueObjects/MoneyTests.cs
+    ├── CleanArchitecture.Application.UnitTests/
+    │   ├── TestDoubles/{TestDbContext, TestDbContextFactory}.cs
+    │   ├── Products/{Commands, Queries}/…          ◄ 핸들러 + 검증기 테스트
+    │   └── Orders/{Commands, Queries}/…
+    └── CleanArchitecture.Api.IntegrationTests/
+        ├── {Products, Orders}ControllerTests.cs
+        ├── {Idempotency, Maintenance, HealthCheck, SecurityHeaders, GracefulShutdown, ProductConcurrency}Tests.cs
+        ├── {DeadlinePropagationMiddleware, DeadlinePropagationHandler, RequestLoggingMiddleware}Tests.cs
+        ├── {JsonConsoleFormatter, PiiMasker, HeaderMasker}Tests.cs
+        ├── {ApiErrorResponse, DistributedCacheIdempotencyStore, DemoBatchWorker, InfrastructureDependencyInjection}Tests.cs
+        └── Infrastructure/{CapturingLoggerProvider, ErrorResponseTestFactory, LoggingTestFactory, ThrowingTestController}.cs
 ```
