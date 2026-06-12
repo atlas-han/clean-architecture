@@ -1,25 +1,15 @@
 using System.Threading;
 using System.Threading.Tasks;
-using AutoMapper;
-using CleanArchitecture.Application.Common.Mappings;
 using CleanArchitecture.Application.Products.Queries.GetProducts;
 using CleanArchitecture.Application.UnitTests.TestDoubles;
 using CleanArchitecture.Domain.Entities;
 using CleanArchitecture.Domain.ValueObjects;
-using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
 namespace CleanArchitecture.Application.UnitTests.Products.Queries.GetProducts
 {
     public class GetProductsQueryHandlerTests
     {
-        private readonly IMapper _mapper;
-
-        public GetProductsQueryHandlerTests()
-        {
-            var config = new MapperConfiguration(cfg => cfg.AddProfile<MappingProfile>(), NullLoggerFactory.Instance);
-            _mapper = config.CreateMapper();
-        }
 
         private static Product MakeProduct(string name)
         {
@@ -30,7 +20,7 @@ namespace CleanArchitecture.Application.UnitTests.Products.Queries.GetProducts
         public async Task Handle_EmptyStore_ReturnsEmptyPage()
         {
             using var ctx = TestDbContextFactory.Create();
-            var handler = new GetProductsQueryHandler(ctx, _mapper);
+            var handler = new GetProductsQueryHandler(ctx);
 
             var result = await handler.Handle(new GetProductsQuery(), CancellationToken.None);
 
@@ -50,7 +40,7 @@ namespace CleanArchitecture.Application.UnitTests.Products.Queries.GetProducts
             ctx.Products.Add(MakeProduct("Newer"));
             await ctx.SaveChangesAsync(CancellationToken.None);
 
-            var handler = new GetProductsQueryHandler(ctx, _mapper);
+            var handler = new GetProductsQueryHandler(ctx);
 
             var result = await handler.Handle(new GetProductsQuery(), CancellationToken.None);
 
@@ -71,7 +61,7 @@ namespace CleanArchitecture.Application.UnitTests.Products.Queries.GetProducts
                 await ctx.SaveChangesAsync(CancellationToken.None);
             }
 
-            var handler = new GetProductsQueryHandler(ctx, _mapper);
+            var handler = new GetProductsQueryHandler(ctx);
 
             var result = await handler.Handle(new GetProductsQuery(Page: 1, PageSize: 2), CancellationToken.None);
 
@@ -96,7 +86,7 @@ namespace CleanArchitecture.Application.UnitTests.Products.Queries.GetProducts
                 await ctx.SaveChangesAsync(CancellationToken.None);
             }
 
-            var handler = new GetProductsQueryHandler(ctx, _mapper);
+            var handler = new GetProductsQueryHandler(ctx);
 
             var result = await handler.Handle(new GetProductsQuery(Page: 3, PageSize: 2), CancellationToken.None);
 
@@ -114,7 +104,7 @@ namespace CleanArchitecture.Application.UnitTests.Products.Queries.GetProducts
             ctx.Products.Add(MakeProduct("Only"));
             await ctx.SaveChangesAsync(CancellationToken.None);
 
-            var handler = new GetProductsQueryHandler(ctx, _mapper);
+            var handler = new GetProductsQueryHandler(ctx);
 
             var result = await handler.Handle(new GetProductsQuery(Page: 0, PageSize: 10), CancellationToken.None);
 

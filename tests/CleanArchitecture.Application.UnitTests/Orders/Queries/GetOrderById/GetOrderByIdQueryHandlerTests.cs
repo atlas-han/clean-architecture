@@ -1,27 +1,17 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
-using AutoMapper;
 using CleanArchitecture.Application.Common.Exceptions;
-using CleanArchitecture.Application.Common.Mappings;
 using CleanArchitecture.Application.Orders.Queries.GetOrderById;
 using CleanArchitecture.Application.UnitTests.TestDoubles;
 using CleanArchitecture.Domain.Entities;
 using CleanArchitecture.Domain.ValueObjects;
-using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
 namespace CleanArchitecture.Application.UnitTests.Orders.Queries.GetOrderById
 {
     public class GetOrderByIdQueryHandlerTests
     {
-        private readonly IMapper _mapper;
-
-        public GetOrderByIdQueryHandlerTests()
-        {
-            var config = new MapperConfiguration(cfg => cfg.AddProfile<MappingProfile>(), NullLoggerFactory.Instance);
-            _mapper = config.CreateMapper();
-        }
 
         [Fact]
         public async Task Handle_ExistingId_ReturnsDtoWithItems()
@@ -35,7 +25,7 @@ namespace CleanArchitecture.Application.UnitTests.Orders.Queries.GetOrderById
             ctx.Orders.Add(order);
             await ctx.SaveChangesAsync(CancellationToken.None);
 
-            var handler = new GetOrderByIdQueryHandler(ctx, _mapper);
+            var handler = new GetOrderByIdQueryHandler(ctx);
 
             var dto = await handler.Handle(new GetOrderByIdQuery(order.Id), CancellationToken.None);
 
@@ -49,7 +39,7 @@ namespace CleanArchitecture.Application.UnitTests.Orders.Queries.GetOrderById
         public async Task Handle_MissingId_ThrowsNotFound()
         {
             using var ctx = TestDbContextFactory.Create();
-            var handler = new GetOrderByIdQueryHandler(ctx, _mapper);
+            var handler = new GetOrderByIdQueryHandler(ctx);
 
             await Assert.ThrowsAsync<NotFoundException>(
                 () => handler.Handle(new GetOrderByIdQuery(Guid.NewGuid()), CancellationToken.None));

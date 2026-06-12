@@ -13,11 +13,6 @@ namespace CleanArchitecture.Application
         {
             var assembly = Assembly.GetExecutingAssembly();
 
-            // AutoMapper 15.x is dual-licensed (RPL-1.5 / commercial; 13.x was MIT) — the
-            // upgrade was forced by GHSA-rvv3-g6hj-g44x having no 13.x/14.x patch.
-            // LicenseKey is intentionally unset (sample project); commercial use needs
-            // cfg.LicenseKey set here.
-            services.AddAutoMapper(cfg => { }, assembly);
             services.AddValidatorsFromAssembly(assembly);
 
             services.AddScoped<ISender, Sender>();

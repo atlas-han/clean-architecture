@@ -1,27 +1,17 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
-using AutoMapper;
 using CleanArchitecture.Application.Common.Exceptions;
-using CleanArchitecture.Application.Common.Mappings;
 using CleanArchitecture.Application.Products.Queries.GetProductById;
 using CleanArchitecture.Application.UnitTests.TestDoubles;
 using CleanArchitecture.Domain.Entities;
 using CleanArchitecture.Domain.ValueObjects;
-using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
 namespace CleanArchitecture.Application.UnitTests.Products.Queries.GetProductById
 {
     public class GetProductByIdQueryHandlerTests
     {
-        private readonly IMapper _mapper;
-
-        public GetProductByIdQueryHandlerTests()
-        {
-            var config = new MapperConfiguration(cfg => cfg.AddProfile<MappingProfile>(), NullLoggerFactory.Instance);
-            _mapper = config.CreateMapper();
-        }
 
         [Fact]
         public async Task Handle_ExistingId_ReturnsDto()
@@ -31,7 +21,7 @@ namespace CleanArchitecture.Application.UnitTests.Products.Queries.GetProductByI
             ctx.Products.Add(product);
             await ctx.SaveChangesAsync(CancellationToken.None);
 
-            var handler = new GetProductByIdQueryHandler(ctx, _mapper);
+            var handler = new GetProductByIdQueryHandler(ctx);
 
             var dto = await handler.Handle(new GetProductByIdQuery(product.Id), CancellationToken.None);
 
@@ -46,7 +36,7 @@ namespace CleanArchitecture.Application.UnitTests.Products.Queries.GetProductByI
         public async Task Handle_MissingId_ThrowsNotFound()
         {
             using var ctx = TestDbContextFactory.Create();
-            var handler = new GetProductByIdQueryHandler(ctx, _mapper);
+            var handler = new GetProductByIdQueryHandler(ctx);
 
             await Assert.ThrowsAsync<NotFoundException>(
                 () => handler.Handle(new GetProductByIdQuery(Guid.NewGuid()), CancellationToken.None));

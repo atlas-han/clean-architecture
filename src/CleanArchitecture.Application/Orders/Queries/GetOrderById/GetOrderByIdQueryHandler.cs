@@ -1,8 +1,8 @@
 using System.Threading;
 using System.Threading.Tasks;
-using AutoMapper;
 using CleanArchitecture.Application.Common.Exceptions;
 using CleanArchitecture.Application.Common.Interfaces;
+using CleanArchitecture.Application.Common.Mappings;
 using CleanArchitecture.Application.Orders.Queries.Dtos;
 using CleanArchitecture.Domain.Entities;
 using CleanArchitecture.Application.Common.Messaging;
@@ -13,12 +13,10 @@ namespace CleanArchitecture.Application.Orders.Queries.GetOrderById
     public class GetOrderByIdQueryHandler : IRequestHandler<GetOrderByIdQuery, OrderDto>
     {
         private readonly IApplicationDbContext _context;
-        private readonly IMapper _mapper;
 
-        public GetOrderByIdQueryHandler(IApplicationDbContext context, IMapper mapper)
+        public GetOrderByIdQueryHandler(IApplicationDbContext context)
         {
             _context = context;
-            _mapper = mapper;
         }
 
         public async Task<OrderDto> Handle(GetOrderByIdQuery request, CancellationToken cancellationToken)
@@ -31,7 +29,7 @@ namespace CleanArchitecture.Application.Orders.Queries.GetOrderById
             if (order is null)
                 throw new NotFoundException(nameof(Order), request.Id);
 
-            return _mapper.Map<OrderDto>(order);
+            return OrderMappings.ToDto(order);
         }
     }
 }

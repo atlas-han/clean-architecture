@@ -1,26 +1,16 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
-using AutoMapper;
-using CleanArchitecture.Application.Common.Mappings;
 using CleanArchitecture.Application.Orders.Queries.GetOrders;
 using CleanArchitecture.Application.UnitTests.TestDoubles;
 using CleanArchitecture.Domain.Entities;
 using CleanArchitecture.Domain.ValueObjects;
-using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
 namespace CleanArchitecture.Application.UnitTests.Orders.Queries.GetOrders
 {
     public class GetOrdersQueryHandlerTests
     {
-        private readonly IMapper _mapper;
-
-        public GetOrdersQueryHandlerTests()
-        {
-            var config = new MapperConfiguration(cfg => cfg.AddProfile<MappingProfile>(), NullLoggerFactory.Instance);
-            _mapper = config.CreateMapper();
-        }
 
         private static Order MakeOrder(string customer)
         {
@@ -34,7 +24,7 @@ namespace CleanArchitecture.Application.UnitTests.Orders.Queries.GetOrders
         public async Task Handle_EmptyStore_ReturnsEmptyPage()
         {
             using var ctx = TestDbContextFactory.Create();
-            var handler = new GetOrdersQueryHandler(ctx, _mapper);
+            var handler = new GetOrdersQueryHandler(ctx);
 
             var result = await handler.Handle(new GetOrdersQuery(), CancellationToken.None);
 
@@ -54,7 +44,7 @@ namespace CleanArchitecture.Application.UnitTests.Orders.Queries.GetOrders
             ctx.Orders.Add(MakeOrder("Newer"));
             await ctx.SaveChangesAsync(CancellationToken.None);
 
-            var handler = new GetOrdersQueryHandler(ctx, _mapper);
+            var handler = new GetOrdersQueryHandler(ctx);
 
             var result = await handler.Handle(new GetOrdersQuery(), CancellationToken.None);
 
@@ -77,7 +67,7 @@ namespace CleanArchitecture.Application.UnitTests.Orders.Queries.GetOrders
             ctx.Orders.Add(order);
             await ctx.SaveChangesAsync(CancellationToken.None);
 
-            var handler = new GetOrdersQueryHandler(ctx, _mapper);
+            var handler = new GetOrdersQueryHandler(ctx);
 
             var result = await handler.Handle(new GetOrdersQuery(), CancellationToken.None);
 
@@ -93,7 +83,7 @@ namespace CleanArchitecture.Application.UnitTests.Orders.Queries.GetOrders
             ctx.Orders.Add(MakeOrder("Only"));
             await ctx.SaveChangesAsync(CancellationToken.None);
 
-            var handler = new GetOrdersQueryHandler(ctx, _mapper);
+            var handler = new GetOrdersQueryHandler(ctx);
 
             var result = await handler.Handle(new GetOrdersQuery(Page: 0, PageSize: 10), CancellationToken.None);
 
@@ -111,7 +101,7 @@ namespace CleanArchitecture.Application.UnitTests.Orders.Queries.GetOrders
                 await ctx.SaveChangesAsync(CancellationToken.None);
             }
 
-            var handler = new GetOrdersQueryHandler(ctx, _mapper);
+            var handler = new GetOrdersQueryHandler(ctx);
 
             var result = await handler.Handle(new GetOrdersQuery(Page: 1, PageSize: 500), CancellationToken.None);
 
@@ -129,7 +119,7 @@ namespace CleanArchitecture.Application.UnitTests.Orders.Queries.GetOrders
                 await ctx.SaveChangesAsync(CancellationToken.None);
             }
 
-            var handler = new GetOrdersQueryHandler(ctx, _mapper);
+            var handler = new GetOrdersQueryHandler(ctx);
 
             var result = await handler.Handle(new GetOrdersQuery(Page: 1, PageSize: 2), CancellationToken.None);
 

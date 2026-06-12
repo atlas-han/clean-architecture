@@ -1,9 +1,8 @@
-using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using AutoMapper;
 using CleanArchitecture.Application.Common.Interfaces;
+using CleanArchitecture.Application.Common.Mappings;
 using CleanArchitecture.Application.Common.Messaging;
 using CleanArchitecture.Application.Common.Models;
 using CleanArchitecture.Application.Orders.Queries.Dtos;
@@ -14,12 +13,10 @@ namespace CleanArchitecture.Application.Orders.Queries.GetOrders
     public class GetOrdersQueryHandler : IRequestHandler<GetOrdersQuery, PagedResult<OrderDto>>
     {
         private readonly IApplicationDbContext _context;
-        private readonly IMapper _mapper;
 
-        public GetOrdersQueryHandler(IApplicationDbContext context, IMapper mapper)
+        public GetOrdersQueryHandler(IApplicationDbContext context)
         {
             _context = context;
-            _mapper = mapper;
         }
 
         public async Task<PagedResult<OrderDto>> Handle(GetOrdersQuery request, CancellationToken cancellationToken)
@@ -36,7 +33,7 @@ namespace CleanArchitecture.Application.Orders.Queries.GetOrders
                 .Take(size)
                 .ToListAsync(cancellationToken);
 
-            var items = _mapper.Map<IReadOnlyList<OrderDto>>(orders);
+            var items = orders.Select(OrderMappings.ToDto).ToList();
             return PagedResult<OrderDto>.Create(items, totalCount, page, size);
         }
     }
