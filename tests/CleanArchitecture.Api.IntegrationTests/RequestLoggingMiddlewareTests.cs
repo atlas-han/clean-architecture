@@ -49,24 +49,40 @@ namespace CleanArchitecture.Api.IntegrationTests
             Assert.Equal(LogLevel.Information, log.Level);
 
             // §14.3 unified spec — field names are a fixed contract, casing included.
-            Assert.Equal("GET", log.Values["method"]);
-            Assert.Equal("/health?probe=1", log.Values["pathname"]);
-            Assert.Equal(200, log.Values["status_code"]);
+            Assert.Equal("GET", log.Values["http.request.method"]);
+            // pathname is split into path + query_string; query_string drops the leading '?'.
+            Assert.Equal("/health", log.Values["path"]);
+            Assert.Equal("probe=1", log.Values["query_string"]);
+            Assert.Equal(200, log.Values["http.response.status_code"]);
             Assert.Equal("Development", log.Values["api_environment"]);
             Assert.Equal(Environment.MachineName, log.Values["server_hostname"]);
             Assert.False(string.IsNullOrEmpty(log.Values["host"] as string));
             Assert.False(string.IsNullOrEmpty(log.Values["trace_id"] as string));
             Assert.False(string.IsNullOrEmpty(log.Values["request_id"] as string));
             Assert.True(log.Values.ContainsKey("span_id"));
-            Assert.True(log.Values.ContainsKey("remote_addr"));
+            Assert.True(log.Values.ContainsKey("client.address"));
             Assert.True(log.Values.ContainsKey("endpoint_handler"));
             Assert.True(log.Values.ContainsKey("req_body_bytes"));
             Assert.True(log.Values.ContainsKey("res_body_bytes"));
 
-            var latency = Assert.IsType<double>(log.Values["latency_ms"]);
-            Assert.True(latency >= 0);
+            var duration = Assert.IsType<double>(log.Values["duration"]);
+            Assert.True(duration >= 0);
 
             Assert.StartsWith("HTTP GET /health?probe=1 -> 200 (", log.Message);
+        }
+
+        [Fact]
+        public async Task RequestWithoutQuery_OmitsQueryStringField()
+        {
+            var client = CreateClient();
+
+            var resp = await client.GetAsync("/health");
+            Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+
+            // §14.3: path is always present; query_string is dropped when there is no query.
+            var log = GetRequestLog();
+            Assert.Equal("/health", log.Values["path"]);
+            Assert.False(log.Values.ContainsKey("query_string"));
         }
 
         [Fact]
@@ -130,7 +146,7 @@ namespace CleanArchitecture.Api.IntegrationTests
 
             var log = GetRequestLog();
             Assert.Equal(LogLevel.Warning, log.Level);
-            Assert.Equal(404, log.Values["status_code"]);
+            Assert.Equal(404, log.Values["http.response.status_code"]);
         }
 
         [Fact]
@@ -185,6 +201,10 @@ namespace CleanArchitecture.Api.IntegrationTests
             // §14.3 prefix convention: one field per header, name lowercased.
             var log = GetRequestLog();
             Assert.Equal("trace-me", log.Values["req_header_x-debug-tag"]);
+
+            // host/content-length request headers are excluded from the access log.
+            Assert.False(log.Values.ContainsKey("req_header_host"));
+            Assert.False(log.Values.ContainsKey("req_header_content-length"));
         }
 
         [Fact]
@@ -231,10 +251,29 @@ namespace CleanArchitecture.Api.IntegrationTests
             var resp = await client.GetAsync("/health");
             Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
 
-            // The middleware sets X-Request-Id on the response; it must surface as a
-            // res_header_* field carrying the same value as request_id.
+            // Response headers surface as res_header_* fields (name lowercased).
             var log = GetRequestLog();
-            Assert.Equal(log.Values["request_id"], log.Values["res_header_x-request-id"]);
+            Assert.True(log.Values.ContainsKey("res_header_content-type"));
+
+            // Low-signal/identity response headers are excluded from the access log.
+            Assert.False(log.Values.ContainsKey("res_header_x-request-id"));
+            Assert.False(log.Values.ContainsKey("res_header_date"));
+            Assert.False(log.Values.ContainsKey("res_header_server"));
+        }
+
+        [Fact]
+        public async Task LocationResponseHeader_IsExcluded_OnCreated()
+        {
+            var client = CreateClient();
+
+            // A successful create returns 201 + a Location header; it must not surface in the log.
+            var payload = new { name = "LocProbe-" + Guid.NewGuid().ToString("N").Substring(0, 8), description = "x", price = 1m, stock = 1 };
+            var resp = await client.PostAsJsonAsync("/api/v1/products", payload);
+            Assert.Equal(HttpStatusCode.Created, resp.StatusCode);
+            Assert.NotNull(resp.Headers.Location);
+
+            var log = GetRequestLog();
+            Assert.False(log.Values.ContainsKey("res_header_location"));
         }
 
         [Fact]
@@ -308,7 +347,7 @@ namespace CleanArchitecture.Api.IntegrationTests
 
             // Unlike bodies, headers (§14.3) are logged at every level, not just debug paths.
             Assert.Equal("trace-me", log!.Values["req_header_x-debug-tag"]);
-            Assert.True(log.Values.ContainsKey("res_header_x-request-id"));
+            Assert.True(log.Values.ContainsKey("res_header_content-type"));
         }
     }
 }

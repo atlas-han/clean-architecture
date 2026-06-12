@@ -403,7 +403,7 @@ curl -i -X POST http://localhost:5000/api/v1/orders/place \
 
 `Api/Middleware/RequestLoggingMiddleware.cs` 가 요청마다 한 줄의 **구조화 JSON 로그**(`Api/Logging/JsonConsoleFormatter.cs`, formatter name `unified_json`)를 남깁니다. 콘솔 로깅은 `Program.cs` 에서 이 포매터로 고정됩니다 (가이드 §14.3 / §14.6).
 
-- **기록 필드(snake_case)**: `timestamp`, `level`, `method`, `pathname`, `status_code`, `latency_ms`, `req_body_bytes`, `res_body_bytes`, `remote_addr`, `trace_id`, `span_id`, `request_id`, `endpoint_handler`, 요청/응답 헤더(`req_header_*` / `res_header_*`). 예외 시 `error_type` / `exception.*` 추가.
+- **기록 필드**: `timestamp`, `level`, `http.request.method`, `path`, `query_string`(쿼리 없으면 생략), `http.response.status_code`, `duration`(ms), `req_body_bytes`, `res_body_bytes`, `client.address`, `host`, `trace_id`, `span_id`, `request_id`, `endpoint_handler`, 요청/응답 헤더(`req_header_*` / `res_header_*`). 예외 시 `error_type` / `exception.*` 추가. HTTP 속성은 OTel 시맨틱 컨벤션의 점 표기(`http.request.method` 등), 인프라 필드는 snake_case. `content-length`/`host` 요청 헤더와 `x-request-id`/`date`/`server`/`location` 응답 헤더는 로그에서 제외.
 - **요청 ID**: `X-Request-Id`/`X-Correlation-Id` 등 인입 상관 ID 를 재사용, 없으면 UUIDv7 생성 → 응답 `X-Request-Id` 헤더로 반향.
 - **헤더 마스킹** (`Api/Logging/HeaderMasker.cs`): `Authorization`, `Proxy-Authorization`, `Cookie`, `Set-Cookie`, `X-Api-Key` 값을 `***` 로 가림.
 - **본문 PII 마스킹** (`Api/Logging/PiiMasker.cs`, 본문은 `Debug` 레벨에서만 로깅): `customerName`, `email`, `phone`, `password`, `ssn`, `cardNumber`, `cvv`, `dateOfBirth` 등 키의 문자열은 첫 글자만 남기고 마스킹 — 중첩 깊이 무관·대소문자 무시.

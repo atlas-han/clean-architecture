@@ -11,8 +11,10 @@ using Microsoft.Extensions.Logging;
 namespace CleanArchitecture.Api.Middleware
 {
     // Emits one access log per HTTP request using the unified API server logging
-    // spec (API design guide §14.3/§14.4). Field names are a fixed contract with
-    // the log pipeline — keep them exactly as-is, in snake_case (trace_id, request_id, latency_ms...).
+    // spec (API design guide §14.3/§14.4). Field names are a fixed contract with the
+    // log pipeline — keep them exactly as-is: snake_case for infra fields (trace_id,
+    // request_id, duration...) and OTel-style dotted keys for HTTP attributes
+    // (http.request.method, http.response.status_code, client.address).
     public class RequestLoggingMiddleware
     {
         private const int MaxBodyLength = 4096;
@@ -26,6 +28,22 @@ namespace CleanArchitecture.Api.Middleware
             "CorrelationId",
             "Request-Id",
             "RequestId"
+        };
+
+        // Header names (lowercase) dropped from the access log — low-signal transport/identity
+        // fields already represented by dedicated log properties or response-side noise.
+        private static readonly HashSet<string> ExcludedRequestHeaders = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "content-length",
+            "host"
+        };
+
+        private static readonly HashSet<string> ExcludedResponseHeaders = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "x-request-id",
+            "date",
+            "server",
+            "location"
         };
 
         private readonly RequestDelegate _next;
@@ -48,8 +66,10 @@ namespace CleanArchitecture.Api.Middleware
 
             context.Response.Headers[RequestIdHeader] = requestUuid;
 
-            var pathname = context.Request.Path.Value
-                + (context.Request.QueryString.HasValue ? context.Request.QueryString.Value : string.Empty);
+            var path = context.Request.Path.Value ?? string.Empty;
+            // QueryString.Value carries the leading '?'; strip it so query_string holds the raw query only.
+            var rawQuery = context.Request.QueryString.HasValue ? context.Request.QueryString.Value : string.Empty;
+            var queryString = rawQuery.StartsWith("?") ? rawQuery.Substring(1) : rawQuery;
             var method = context.Request.Method;
             var host = context.Request.Host.Value;
             var remoteAddr = context.Connection.RemoteIpAddress is { } remoteIp
@@ -131,16 +151,22 @@ namespace CleanArchitecture.Api.Middleware
                     new KeyValuePair<string, object?>("trace_id", traceId),
                     new KeyValuePair<string, object?>("span_id", spanId),
                     new KeyValuePair<string, object?>("endpoint_handler", context.GetEndpoint()?.DisplayName ?? string.Empty),
-                    new KeyValuePair<string, object?>("method", method),
-                    new KeyValuePair<string, object?>("pathname", pathname),
+                    new KeyValuePair<string, object?>("http.request.method", method),
+                    new KeyValuePair<string, object?>("path", path),
                     new KeyValuePair<string, object?>("host", host),
-                    new KeyValuePair<string, object?>("remote_addr", remoteAddr),
+                    new KeyValuePair<string, object?>("client.address", remoteAddr),
                     new KeyValuePair<string, object?>("server_hostname", Environment.MachineName),
-                    new KeyValuePair<string, object?>("status_code", statusCode),
-                    new KeyValuePair<string, object?>("latency_ms", latencyMs),
+                    new KeyValuePair<string, object?>("http.response.status_code", statusCode),
+                    new KeyValuePair<string, object?>("duration", latencyMs),
                     new KeyValuePair<string, object?>("req_body_bytes", reqBodyBytes),
                     new KeyValuePair<string, object?>("res_body_bytes", resBodyBytes)
                 };
+
+                // query_string is omitted entirely when the request carries no query (§14.3).
+                if (!string.IsNullOrEmpty(queryString))
+                {
+                    state.Add(new KeyValuePair<string, object?>("query_string", queryString));
+                }
 
                 if (caught != null)
                 {
@@ -158,10 +184,10 @@ namespace CleanArchitecture.Api.Middleware
                 // logic can be debugged from the access log. Sensitive headers are masked
                 // (§14.6 — HeaderMasker). Headers are always logged (unlike bodies, which
                 // §14.6 keeps off outside debug paths).
-                AppendHeaders(state, "req_header_", context.Request.Headers);
-                AppendHeaders(state, "res_header_", context.Response.Headers);
+                AppendHeaders(state, "req_header_", context.Request.Headers, ExcludedRequestHeaders);
+                AppendHeaders(state, "res_header_", context.Response.Headers, ExcludedResponseHeaders);
 
-                var message = FormatMessage(method, pathname, statusCode, latencyMs);
+                var message = FormatMessage(method, path + rawQuery, statusCode, latencyMs);
                 _logger.Log(level, default, state, caught, (_, _) => message);
             }
         }
@@ -169,22 +195,25 @@ namespace CleanArchitecture.Api.Middleware
         // Adds one "<prefix><lowercased-header-name>" field per header to the access-log
         // state (§14.3 prefix convention). Multi-value headers collapse to the comma-joined
         // form produced by StringValues.ToString(). Sensitive values are redacted by HeaderMasker.
-        private static void AppendHeaders(List<KeyValuePair<string, object?>> state, string prefix, IHeaderDictionary headers)
+        // Headers named in <paramref name="excluded"/> (lowercase) are dropped from the log.
+        private static void AppendHeaders(List<KeyValuePair<string, object?>> state, string prefix, IHeaderDictionary headers, HashSet<string> excluded)
         {
             foreach (var header in headers)
             {
-                var field = prefix + header.Key.ToLowerInvariant();
+                var name = header.Key.ToLowerInvariant();
+                if (excluded.Contains(name)) continue;
+                var field = prefix + name;
                 var value = Logging.HeaderMasker.Mask(header.Key, header.Value.ToString());
                 state.Add(new KeyValuePair<string, object?>(field, value));
             }
         }
 
-        private static string FormatMessage(string method, string pathname, int statusCode, double latencyMs)
+        private static string FormatMessage(string method, string requestTarget, int statusCode, double latencyMs)
         {
             return string.Format(
                 System.Globalization.CultureInfo.InvariantCulture,
                 "HTTP {0} {1} -> {2} ({3:0.0}ms)",
-                method, pathname, statusCode, latencyMs);
+                method, requestTarget, statusCode, latencyMs);
         }
 
         private static LogLevel DetermineLevel(int statusCode, Exception? exception)
