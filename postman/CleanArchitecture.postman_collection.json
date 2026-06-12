@@ -1,0 +1,274 @@
+{
+  "info": {
+    "name": "CleanArchitecture API",
+    "_postman_id": "c1ea0a17-0000-4000-8000-cleanarch0001",
+    "description": "ASP.NET Core 9 Clean Architecture sample API.\n\n## Setup\n1. Run the API: `dotnet run --project src/CleanArchitecture.Api` (listens on https://localhost:5001 / http://localhost:5000).\n2. Import this collection. The `baseUrl` collection variable defaults to https://localhost:5001 — change it, or import the bundled environment file, to switch hosts.\n3. The dev cert is self-signed. In Postman: Settings → General → turn **SSL certificate verification** OFF (or use the http://localhost:5000 base URL).\n\n## Chaining\nThe **Create Product**, **Create Order**, and **Place Order** requests capture the returned `id` into the `productId` / `orderId` collection variables, so the GET/PUT/DELETE/cancel/confirm requests work right after without manual copy-paste.\n\n## Error mapping\n- FluentValidation failures → 400 (ValidationException)\n- Domain invariant violations → 400 (DomainException)\n- Missing entity → 404 (NotFoundException)\nAll mapped by `ApiExceptionFilter` to ProblemDetails.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Products",
+      "item": [
+        {
+          "name": "Get All Products",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/Products?page=1&pageSize=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "Products"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "pageSize", "value": "20" }
+              ]
+            },
+            "description": "Paged list of products. Returns PagedResult<ProductDto>."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Product By Id",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/Products/{{productId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "Products", "{{productId}}"]
+            },
+            "description": "Returns a single ProductDto. 404 if not found."
+          },
+          "response": []
+        },
+        {
+          "name": "Create Product",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    var body = pm.response.json();",
+                  "    if (body && body.id) {",
+                  "        pm.collectionVariables.set('productId', body.id);",
+                  "        console.log('Saved productId =', body.id);",
+                  "    }",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Mechanical Keyboard\",\n  \"description\": \"87-key hot-swappable, brown switches\",\n  \"price\": 129.99,\n  \"stock\": 50\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/Products",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "Products"]
+            },
+            "description": "Creates a product. Returns 201 with the created ProductDto. Captures `id` into the productId variable."
+          },
+          "response": []
+        },
+        {
+          "name": "Update Product",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"{{productId}}\",\n  \"name\": \"Mechanical Keyboard (v2)\",\n  \"description\": \"87-key hot-swappable, silent red switches\",\n  \"price\": 139.99,\n  \"stock\": 42\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/Products/{{productId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "Products", "{{productId}}"]
+            },
+            "description": "Updates a product. The route id must match the body id (else 400). Returns 204 No Content."
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Product",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/Products/{{productId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "Products", "{{productId}}"]
+            },
+            "description": "Deletes a product. Returns 204 No Content. 404 if not found."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Orders",
+      "item": [
+        {
+          "name": "Get All Orders",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/Orders?page=1&pageSize=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "Orders"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "pageSize", "value": "20" }
+              ]
+            },
+            "description": "Paged list of orders. Returns PagedResult<OrderDto>."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Order By Id",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/Orders/{{orderId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "Orders", "{{orderId}}"]
+            },
+            "description": "Returns a single OrderDto. 404 if not found."
+          },
+          "response": []
+        },
+        {
+          "name": "Create Order",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    var body = pm.response.json();",
+                  "    if (body && body.id) {",
+                  "        pm.collectionVariables.set('orderId', body.id);",
+                  "        console.log('Saved orderId =', body.id);",
+                  "    }",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"customerName\": \"Ada Lovelace\",\n  \"items\": [\n    {\n      \"productId\": \"{{productId}}\",\n      \"quantity\": 2\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/Orders",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "Orders"]
+            },
+            "description": "Creates an order. Returns 201 with the created OrderDto. Captures `id` into the orderId variable. `productId` must reference an existing product."
+          },
+          "response": []
+        },
+        {
+          "name": "Place Order",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    var body = pm.response.json();",
+                  "    if (body && body.id) {",
+                  "        pm.collectionVariables.set('orderId', body.id);",
+                  "        console.log('Saved orderId =', body.id);",
+                  "    }",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"customerName\": \"Grace Hopper\",\n  \"items\": [\n    {\n      \"productId\": \"{{productId}}\",\n      \"quantity\": 1\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/Orders/place",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "Orders", "place"]
+            },
+            "description": "Places an order (alternate creation flow). Returns 201 with the created OrderDto. Captures `id` into the orderId variable."
+          },
+          "response": []
+        },
+        {
+          "name": "Cancel Order",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/Orders/{{orderId}}/cancel",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "Orders", "{{orderId}}", "cancel"]
+            },
+            "description": "Cancels an order. Returns 204 No Content. 400 if the order's state forbids cancellation (DomainException), 404 if not found."
+          },
+          "response": []
+        },
+        {
+          "name": "Confirm Order",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/Orders/{{orderId}}/confirm",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "Orders", "{{orderId}}", "confirm"]
+            },
+            "description": "Confirms an order. Returns 204 No Content. 400 if the order's state forbids confirmation (DomainException), 404 if not found."
+          },
+          "response": []
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "https://localhost:5001",
+      "type": "string"
+    },
+    {
+      "key": "productId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "orderId",
+      "value": "",
+      "type": "string"
+    }
+  ]
+}
