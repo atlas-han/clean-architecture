@@ -82,7 +82,7 @@ namespace CleanArchitecture.Api.Logging
                 {
                     if (kvp.Key == OriginalFormatKey) continue;
                     if (ExcludedScopeKeys.Contains(kvp.Key)) continue;
-                    target[kvp.Key] = kvp.Value;
+                    target[kvp.Key] = ToJsonSafe(kvp.Value);
                 }
             }
         }
@@ -94,9 +94,29 @@ namespace CleanArchitecture.Api.Logging
                 foreach (var kvp in kvps)
                 {
                     if (kvp.Key == OriginalFormatKey) continue;
-                    target[kvp.Key] = kvp.Value;
+                    target[kvp.Key] = ToJsonSafe(kvp.Value);
                 }
             }
+        }
+
+        // Log state/scope can carry arbitrary values. Some — notably System.Type
+        // (RuntimeType), which EF Core puts in diagnostic events such as
+        // QueryIterationFailed — are not JSON-serializable, and would make
+        // JsonSerializer.Serialize throw. ConsoleFormatter surfaces that as an
+        // AggregateException that masks the original error and 500s the request.
+        // A logger must never throw, so coerce anything that isn't a JSON-friendly
+        // scalar to its string form.
+        private static object? ToJsonSafe(object? value)
+        {
+            return value switch
+            {
+                null => null,
+                string or bool or char
+                    or byte or sbyte or short or ushort or int or uint or long or ulong
+                    or float or double or decimal
+                    or DateTime or DateTimeOffset or TimeSpan or Guid or Enum => value,
+                _ => Convert.ToString(value, CultureInfo.InvariantCulture)
+            };
         }
 
         private static string MapLevel(LogLevel level)

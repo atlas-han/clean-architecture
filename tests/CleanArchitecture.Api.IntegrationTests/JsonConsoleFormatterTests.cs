@@ -162,6 +162,38 @@ namespace CleanArchitecture.Api.IntegrationTests
             Assert.False(string.IsNullOrEmpty(exception.GetProperty("stackTrace").GetString()));
         }
 
+        [Fact]
+        public void Write_CoercesNonSerializableStateValue_DoesNotThrow()
+        {
+            var formatter = CreateFormatter();
+            // EF Core's QueryIterationFailed diagnostic event carries the DbContext
+            // type (a System.Type / RuntimeType) in its log state. System.Text.Json
+            // cannot serialize Type, so before hardening this made the logger throw
+            // an AggregateException that masked the real DB error and 500'd /api/Orders.
+            var state = new List<KeyValuePair<string, object?>>
+            {
+                new KeyValuePair<string, object?>("contextType", typeof(JsonConsoleFormatter))
+            };
+
+            var entry = new LogEntry<IReadOnlyList<KeyValuePair<string, object?>>>(
+                LogLevel.Error,
+                "Microsoft.EntityFrameworkCore.Query",
+                eventId: default,
+                state: state,
+                exception: null,
+                formatter: (_, _) => "query iteration failed");
+
+            var writer = new StringWriter();
+
+            var thrown = Record.Exception(() => formatter.Write(in entry, null, writer));
+            Assert.Null(thrown);
+
+            using var doc = JsonDocument.Parse(writer.ToString().Trim());
+            Assert.Equal(
+                typeof(JsonConsoleFormatter).ToString(),
+                doc.RootElement.GetProperty("contextType").GetString());
+        }
+
         private static string RenderLevel(LogLevel level)
         {
             var formatter = CreateFormatter();
