@@ -36,10 +36,9 @@ namespace CleanArchitecture.Infrastructure.Messaging
                 Value = payload,
                 Headers = new Headers
                 {
-                    // Payload is JSON-serialized; Idempotency-Key is the OutboxMessage.Id (broker-side
-                    // dedupe); MessageType is the OutboxMessage.Type (logical event name).
-                    { "Type", Encoding.UTF8.GetBytes("json") },
-                    { "Idempotency-Key", Encoding.UTF8.GetBytes(idempotencyKey) },
+                    // IdempotencyKey is the OutboxMessage.Id (broker-side dedupe); MessageType is the
+                    // OutboxMessage.Type (logical event name).
+                    { "IdempotencyKey", Encoding.UTF8.GetBytes(idempotencyKey) },
                     { "MessageType", Encoding.UTF8.GetBytes(eventType) }
                 }
             };

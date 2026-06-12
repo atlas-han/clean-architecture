@@ -9,7 +9,7 @@ namespace CleanArchitecture.Infrastructure.Messaging
     public interface IEventPublisher
     {
         // idempotencyKey carries the OutboxMessage.Id so the broker side can dedupe; eventType is the
-        // OutboxMessage.Type. The Kafka producer surfaces both as message headers (Idempotency-Key /
+        // OutboxMessage.Type. The Kafka producer surfaces both as message headers (IdempotencyKey /
         // MessageType).
         Task PublishAsync(string eventType, string key, string payload, string idempotencyKey, CancellationToken cancellationToken);
     }
