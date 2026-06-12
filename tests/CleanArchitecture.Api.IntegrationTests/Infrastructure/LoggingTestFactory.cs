@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Mvc.ApplicationParts;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -11,6 +12,14 @@ namespace CleanArchitecture.Api.IntegrationTests.Infrastructure
 
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
+            // Load the test-only ThrowingTestController (/api/_test/*) so header-logging
+            // tests can drive a probe endpoint (e.g. one that emits Set-Cookie).
+            builder.ConfigureServices(services =>
+            {
+                services.AddControllers()
+                    .PartManager.ApplicationParts.Add(
+                        new AssemblyPart(typeof(ThrowingTestController).Assembly));
+            });
             builder.ConfigureLogging(logging =>
             {
                 logging.SetMinimumLevel(LogLevel.Debug);

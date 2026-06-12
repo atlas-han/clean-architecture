@@ -42,6 +42,15 @@ namespace CleanArchitecture.Api.IntegrationTests.Infrastructure
             return Ok();
         }
 
+        // Emits a Set-Cookie response header so a test can verify response-side header
+        // masking (§14.6) flows end-to-end through the access-log res_header_* path.
+        [HttpGet("set-cookie")]
+        public IActionResult SetCookieHeader()
+        {
+            Response.Headers["Set-Cookie"] = "session=secret-cookie-value; Path=/";
+            return Ok();
+        }
+
         [HttpGet("throw-derived-domain")]
         public IActionResult ThrowDerivedDomain()
         {

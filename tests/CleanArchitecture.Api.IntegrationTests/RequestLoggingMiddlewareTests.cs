@@ -170,6 +170,94 @@ namespace CleanArchitecture.Api.IntegrationTests
             using var doc = JsonDocument.Parse(body!);
             Assert.Equal("S*****", doc.RootElement.GetProperty("customerName").GetString());
         }
+
+        [Fact]
+        public async Task RequestHeaders_AreLogged_WithReqHeaderPrefix()
+        {
+            var client = CreateClient();
+
+            var req = new HttpRequestMessage(HttpMethod.Get, "/health");
+            req.Headers.TryAddWithoutValidation("X-Debug-Tag", "trace-me");
+
+            var resp = await client.SendAsync(req);
+            Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+
+            // §14.3 prefix convention: one field per header, name lowercased.
+            var log = GetRequestLog();
+            Assert.Equal("trace-me", log.Values["req_header_x-debug-tag"]);
+        }
+
+        [Fact]
+        public async Task SensitiveRequestHeaders_AreMasked()
+        {
+            // Cookie is managed by the cookie container by default; turn it off so the
+            // header we set reaches the server verbatim and exercises the mask path.
+            _factory.Provider.Clear();
+            var client = _factory.CreateClient(new WebApplicationFactoryClientOptions
+            {
+                AllowAutoRedirect = false,
+                HandleCookies = false
+            });
+
+            var req = new HttpRequestMessage(HttpMethod.Get, "/health");
+            req.Headers.TryAddWithoutValidation("Authorization", "Bearer super-secret-token");
+            req.Headers.TryAddWithoutValidation("X-Api-Key", "ak_live_should_not_leak");
+            req.Headers.TryAddWithoutValidation("Cookie", "session=hidden-session-value");
+
+            var resp = await client.SendAsync(req);
+            Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+
+            // §14.6: sensitive headers are redacted; the raw secret never reaches the log.
+            var log = GetRequestLog();
+            Assert.Equal("***", log.Values["req_header_authorization"]);
+            Assert.Equal("***", log.Values["req_header_x-api-key"]);
+            Assert.Equal("***", log.Values["req_header_cookie"]);
+
+            foreach (var value in log.Values.Values)
+            {
+                var text = value as string;
+                if (text == null) continue;
+                Assert.DoesNotContain("super-secret-token", text);
+                Assert.DoesNotContain("ak_live_should_not_leak", text);
+                Assert.DoesNotContain("hidden-session-value", text);
+            }
+        }
+
+        [Fact]
+        public async Task ResponseHeaders_AreLogged_WithResHeaderPrefix()
+        {
+            var client = CreateClient();
+
+            var resp = await client.GetAsync("/health");
+            Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+
+            // The middleware sets X-Request-Id on the response; it must surface as a
+            // res_header_* field carrying the same value as request_id.
+            var log = GetRequestLog();
+            Assert.Equal(log.Values["request_id"], log.Values["res_header_x-request-id"]);
+        }
+
+        [Fact]
+        public async Task SensitiveResponseHeaders_AreMasked()
+        {
+            var client = CreateClient();
+
+            // The probe endpoint sets a Set-Cookie response header (a credential carrier).
+            var resp = await client.GetAsync("/api/_test/set-cookie");
+            Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+
+            // §14.6: response-side masking applies on the res_header_* path too.
+            var log = GetRequestLog();
+            Assert.Equal("***", log.Values["res_header_set-cookie"]);
+
+            foreach (var value in log.Values.Values)
+            {
+                if (value is string text)
+                {
+                    Assert.DoesNotContain("secret-cookie-value", text);
+                }
+            }
+        }
     }
 
     public class RequestLoggingMiddlewareInfoLevelTests : IClassFixture<InfoLoggingTestFactory>
@@ -201,6 +289,26 @@ namespace CleanArchitecture.Api.IntegrationTests
             Assert.False(log.Values.ContainsKey("response_body"));
             Assert.True(log.Values.ContainsKey("req_body_bytes"));
             Assert.True(log.Values.ContainsKey("res_body_bytes"));
+        }
+
+        [Fact]
+        public async Task InfoLevel_StillLogsHeaders()
+        {
+            _factory.Provider.Clear();
+            var client = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+
+            var req = new HttpRequestMessage(HttpMethod.Get, "/health");
+            req.Headers.TryAddWithoutValidation("X-Debug-Tag", "trace-me");
+
+            var resp = await client.SendAsync(req);
+            Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+
+            var log = _factory.Provider.Entries.FirstOrDefault(e => e.Category == MiddlewareCategory);
+            Assert.NotNull(log);
+
+            // Unlike bodies, headers (§14.3) are logged at every level, not just debug paths.
+            Assert.Equal("trace-me", log!.Values["req_header_x-debug-tag"]);
+            Assert.True(log.Values.ContainsKey("res_header_x-request-id"));
         }
     }
 }

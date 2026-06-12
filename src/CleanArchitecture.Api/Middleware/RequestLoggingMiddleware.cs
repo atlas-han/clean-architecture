@@ -154,8 +154,28 @@ namespace CleanArchitecture.Api.Middleware
                     state.Add(new KeyValuePair<string, object?>("response_body", Truncate(Logging.PiiMasker.Mask(responseBody), MaxBodyLength)));
                 }
 
+                // §14.3 req_header_*/res_header_*: one field per header so header-driven
+                // logic can be debugged from the access log. Sensitive headers are masked
+                // (§14.6 — HeaderMasker). Headers are always logged (unlike bodies, which
+                // §14.6 keeps off outside debug paths).
+                AppendHeaders(state, "req_header_", context.Request.Headers);
+                AppendHeaders(state, "res_header_", context.Response.Headers);
+
                 var message = FormatMessage(method, pathname, statusCode, latencyMs);
                 _logger.Log(level, default, state, caught, (_, _) => message);
+            }
+        }
+
+        // Adds one "<prefix><lowercased-header-name>" field per header to the access-log
+        // state (§14.3 prefix convention). Multi-value headers collapse to the comma-joined
+        // form produced by StringValues.ToString(). Sensitive values are redacted by HeaderMasker.
+        private static void AppendHeaders(List<KeyValuePair<string, object?>> state, string prefix, IHeaderDictionary headers)
+        {
+            foreach (var header in headers)
+            {
+                var field = prefix + header.Key.ToLowerInvariant();
+                var value = Logging.HeaderMasker.Mask(header.Key, header.Value.ToString());
+                state.Add(new KeyValuePair<string, object?>(field, value));
             }
         }
 
