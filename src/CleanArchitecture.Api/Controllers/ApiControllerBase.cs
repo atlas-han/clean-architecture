@@ -1,4 +1,6 @@
+using System.Threading;
 using Asp.Versioning;
+using CleanArchitecture.Api.Middleware;
 using CleanArchitecture.Application.Common.Messaging;
 using Microsoft.AspNetCore.Mvc;
 
@@ -19,5 +21,9 @@ namespace CleanArchitecture.Api.Controllers
         {
             Sender = sender;
         }
+
+        // Deadline-bounded cancellation token for this request (§7.4 step 2); RequestAborted when
+        // no X-Request-Deadline was supplied. Pass to Sender.Send so handler/DB work honors the budget.
+        protected CancellationToken DeadlineToken => HttpContext.GetRequestCancellationToken();
     }
 }

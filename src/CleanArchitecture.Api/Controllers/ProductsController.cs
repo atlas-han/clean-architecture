@@ -23,7 +23,7 @@ namespace CleanArchitecture.Api.Controllers
             [FromQuery] int page = 1,
             [FromQuery] int pageSize = 20)
         {
-            var result = await Sender.Send(new GetProductsQuery(page, pageSize));
+            var result = await Sender.Send(new GetProductsQuery(page, pageSize), DeadlineToken);
             // List response: Data is the array, pagination goes in Meta (§4.2).
             var meta = new PaginationMeta(result.Page, result.PageSize, result.TotalCount, result.TotalPages);
             return Ok(ApiResult.Success(HttpContext, result.Items, meta));
@@ -32,15 +32,15 @@ namespace CleanArchitecture.Api.Controllers
         [HttpGet("{id:guid}")]
         public async Task<IActionResult> GetById(Guid id)
         {
-            var product = await Sender.Send(new GetProductByIdQuery(id));
+            var product = await Sender.Send(new GetProductByIdQuery(id), DeadlineToken);
             return Ok(ApiResult.Success(HttpContext, product));
         }
 
         [HttpPost]
         public async Task<IActionResult> Create([FromBody] CreateProductCommand command)
         {
-            var id = await Sender.Send(command);
-            var dto = await Sender.Send(new GetProductByIdQuery(id));
+            var id = await Sender.Send(command, DeadlineToken);
+            var dto = await Sender.Send(new GetProductByIdQuery(id), DeadlineToken);
             return CreatedAtAction(nameof(GetById), new { id }, ApiResult.Success(HttpContext, dto));
         }
 
@@ -53,14 +53,14 @@ namespace CleanArchitecture.Api.Controllers
                     "Route id does not match body id."));
             }
 
-            await Sender.Send(command);
+            await Sender.Send(command, DeadlineToken);
             return NoContent();
         }
 
         [HttpDelete("{id:guid}")]
         public async Task<IActionResult> Delete(Guid id)
         {
-            await Sender.Send(new DeleteProductCommand(id));
+            await Sender.Send(new DeleteProductCommand(id), DeadlineToken);
             return NoContent();
         }
     }

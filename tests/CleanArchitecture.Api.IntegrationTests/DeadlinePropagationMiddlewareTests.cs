@@ -120,5 +120,22 @@ namespace CleanArchitecture.Api.IntegrationTests
             var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
             Assert.Equal(JsonValueKind.Null, body.GetProperty("stored").ValueKind);
         }
+
+        [Fact]
+        public async Task LiveDeadline_CancelsInFlightWork_With504()
+        {
+            var client = _probeFactory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+
+            // 500ms budget clears the 50ms entry gate, so /slow starts; its 30s delay observes the
+            // deadline token (§7.4 step 2) and is cancelled at ~500ms → OperationCanceledException
+            // → ApiExceptionFilter maps it to 504 DEADLINE_EXCEEDED (client still connected).
+            var req = new HttpRequestMessage(HttpMethod.Get, "/api/_test/slow");
+            req.Headers.Add(DeadlinePropagationMiddleware.DeadlineHeader, EpochMs(TimeSpan.FromMilliseconds(500)).ToString());
+            var resp = await client.SendAsync(req);
+
+            Assert.Equal(HttpStatusCode.GatewayTimeout, resp.StatusCode);
+            var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+            Assert.Equal("DEADLINE_EXCEEDED", body.GetProperty("error").GetProperty("code").GetString());
+        }
     }
 }

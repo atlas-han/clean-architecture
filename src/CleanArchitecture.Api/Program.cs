@@ -3,6 +3,7 @@ using System.Linq;
 using System.Text.Json;
 using Asp.Versioning;
 using CleanArchitecture.Api.Filters;
+using CleanArchitecture.Api.Http;
 using CleanArchitecture.Api.Logging;
 using CleanArchitecture.Api.Middleware;
 using CleanArchitecture.Application;
@@ -36,6 +37,12 @@ if (builder.Environment.IsDevelopment() || builder.Environment.IsEnvironment("Lo
 
 builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
+
+// §7.4 step 3: lets DeadlinePropagationHandler read the inbound request's deadline so it can
+// re-propagate X-Request-Deadline to downstream HttpClient calls. Attach the handler to any
+// typed/named client with AddHttpClient(...).AddHttpMessageHandler<DeadlinePropagationHandler>().
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddTransient<DeadlinePropagationHandler>();
 
 // Graceful shutdown: give in-flight requests up to Shutdown:Timeout (default 30s) to drain
 // after SIGTERM / Ctrl+C before the host force-exits.

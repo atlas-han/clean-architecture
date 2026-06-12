@@ -1,8 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using CleanArchitecture.Api.Common;
 using CleanArchitecture.Api.Common.Responses;
+using CleanArchitecture.Api.Middleware;
 using CleanArchitecture.Application.Common.Exceptions;
 using CleanArchitecture.Domain.Exceptions;
 using Microsoft.AspNetCore.Http;
@@ -30,6 +32,7 @@ namespace CleanArchitecture.Api.Filters
                 [typeof(NotFoundException)] = HandleNotFound,
                 [typeof(DomainException)] = HandleDomain,
                 [typeof(DbUpdateConcurrencyException)] = HandleConcurrency,
+                [typeof(OperationCanceledException)] = HandleCanceled,
             };
         }
 
@@ -85,6 +88,36 @@ namespace CleanArchitecture.Api.Filters
         {
             Write(context, StatusCodes.Status409Conflict, ErrorCodes.Conflict,
                 "The resource changed while this request was being processed. Refresh and retry.");
+        }
+
+        private void HandleCanceled(ExceptionContext context)
+        {
+            var ctx = context.HttpContext;
+
+            // A deadline-bounded token (§7.4 step 2) that fired while the client is still
+            // connected means the request budget was exhausted mid-flight → 504 DEADLINE_EXCEEDED.
+            if (ctx.Items.TryGetValue(DeadlinePropagationMiddleware.DeadlineTokenItemKey, out var value)
+                && value is CancellationToken token
+                && token.IsCancellationRequested
+                && !ctx.RequestAborted.IsCancellationRequested)
+            {
+                Write(context, StatusCodes.Status504GatewayTimeout, ErrorCodes.DeadlineExceeded,
+                    "The request deadline (X-Request-Deadline) was exceeded before processing could complete.");
+                return;
+            }
+
+            // Genuine client disconnect — this also wins a simultaneous deadline+disconnect (the
+            // client is gone either way). Not a server error: swallow quietly with 499 (Client
+            // Closed Request) so it isn't logged as an unhandled 500; the response is discarded.
+            if (ctx.RequestAborted.IsCancellationRequested)
+            {
+                context.Result = new StatusCodeResult(499);
+                context.ExceptionHandled = true;
+                return;
+            }
+
+            // Cancellation we didn't initiate and the client didn't cause → treat as unexpected (500).
+            HandleUnknown(context);
         }
 
         private void HandleUnknown(ExceptionContext context)

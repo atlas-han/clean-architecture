@@ -1,4 +1,5 @@
 using System;
+using System.Threading.Tasks;
 using Asp.Versioning;
 using CleanArchitecture.Api.Middleware;
 using CleanArchitecture.Domain.Exceptions;
@@ -30,6 +31,15 @@ namespace CleanArchitecture.Api.IntegrationTests.Infrastructure
                 ? deadline.ToUnixTimeMilliseconds()
                 : (long?)null;
             return Ok(new { stored });
+        }
+
+        // Honors the §7.4 step-2 deadline token via GetRequestCancellationToken(): a long await
+        // the deadline cancels mid-flight, exercising the OperationCanceledException -> 504 mapping.
+        [HttpGet("slow")]
+        public async Task<IActionResult> Slow()
+        {
+            await Task.Delay(TimeSpan.FromSeconds(30), HttpContext.GetRequestCancellationToken());
+            return Ok();
         }
 
         [HttpGet("throw-derived-domain")]

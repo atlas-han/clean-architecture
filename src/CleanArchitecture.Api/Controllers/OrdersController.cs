@@ -24,7 +24,7 @@ namespace CleanArchitecture.Api.Controllers
             [FromQuery] int page = 1,
             [FromQuery] int pageSize = 20)
         {
-            var result = await Sender.Send(new GetOrdersQuery(page, pageSize));
+            var result = await Sender.Send(new GetOrdersQuery(page, pageSize), DeadlineToken);
             // List response: Data is the array, pagination goes in Meta (§4.2).
             var meta = new PaginationMeta(result.Page, result.PageSize, result.TotalCount, result.TotalPages);
             return Ok(ApiResult.Success(HttpContext, result.Items, meta));
@@ -33,37 +33,37 @@ namespace CleanArchitecture.Api.Controllers
         [HttpGet("{id:guid}")]
         public async Task<IActionResult> GetById(Guid id)
         {
-            var order = await Sender.Send(new GetOrderByIdQuery(id));
+            var order = await Sender.Send(new GetOrderByIdQuery(id), DeadlineToken);
             return Ok(ApiResult.Success(HttpContext, order));
         }
 
         [HttpPost]
         public async Task<IActionResult> Create([FromBody] CreateOrderCommand command)
         {
-            var id = await Sender.Send(command);
-            var dto = await Sender.Send(new GetOrderByIdQuery(id));
+            var id = await Sender.Send(command, DeadlineToken);
+            var dto = await Sender.Send(new GetOrderByIdQuery(id), DeadlineToken);
             return CreatedAtAction(nameof(GetById), new { id }, ApiResult.Success(HttpContext, dto));
         }
 
         [HttpPost("place")]
         public async Task<IActionResult> Place([FromBody] PlaceOrderCommand command)
         {
-            var id = await Sender.Send(command);
-            var dto = await Sender.Send(new GetOrderByIdQuery(id));
+            var id = await Sender.Send(command, DeadlineToken);
+            var dto = await Sender.Send(new GetOrderByIdQuery(id), DeadlineToken);
             return CreatedAtAction(nameof(GetById), new { id }, ApiResult.Success(HttpContext, dto));
         }
 
         [HttpPost("{id:guid}/cancel")]
         public async Task<IActionResult> Cancel(Guid id)
         {
-            await Sender.Send(new CancelOrderCommand(id));
+            await Sender.Send(new CancelOrderCommand(id), DeadlineToken);
             return NoContent();
         }
 
         [HttpPost("{id:guid}/confirm")]
         public async Task<IActionResult> Confirm(Guid id)
         {
-            await Sender.Send(new ConfirmOrderCommand(id));
+            await Sender.Send(new ConfirmOrderCommand(id), DeadlineToken);
             return NoContent();
         }
     }

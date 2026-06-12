@@ -194,7 +194,7 @@ HTTP request
 | 없음 | — | 그대로 통과 (기능은 **opt-in**) |
 | 파싱 불가 (예: 비-숫자) | — | 무시하고 통과 (상위 hop 의 힌트일 뿐 클라이언트 입력이 아니므로 400 으로 거부하지 않음) |
 | 있음 | `< 50ms` | **즉시 `504 Gateway Timeout`** — `DEADLINE_EXCEEDED`. 하위 호출 자체를 시작하지 않음 |
-| 있음 | `≥ 50ms` | `HttpContext.Items["RequestDeadline"]` 에 deadline 보관 후 통과 |
+| 있음 | `≥ 50ms` | deadline 을 `HttpContext.Items["RequestDeadline"]` 에 보관 + 잔여 예산으로 취소 토큰(2단계) 생성 후 통과 |
 
 50ms 는 네트워크·핸들러 레이턴시조차 버티기 어려운 최소 마진입니다 (가이드의 10~50ms 범위 중 미들웨어 기준값). 만료(또는 임박) 응답은 `ApiExceptionFilter` 와 동일한 §4.3 `ErrorResponse` 봉투(`ApiResult.Error` 로 생성 — `traceId` / `timestamp` / `error.code` / `error.message`)로 내려갑니다:
 
@@ -215,7 +215,15 @@ curl -i http://localhost:5000/api/products \
   -H "X-Request-Deadline: 1000000000000"
 ```
 
-> **스코프**: 이 샘플은 가이드 §7.4 의 **진입점 fast-fail (1단계)** 까지 구현합니다. 살아있는 deadline 을 `CancellationTokenSource(remaining)` 로 만들어 DB·다운스트림 호출에 전파하는 2·3단계는, 보관된 `HttpContext.Items["RequestDeadline"]` 를 핸들러가 읽어 쓰는 확장점으로 열어 두었습니다 (모든 컨트롤러를 건드리는 변경이라 샘플에는 미반영).
+### 수신 측 처리 (3단계)
+
+미들웨어는 진입 fast-fail 에서 끝나지 않고, 살아있는 deadline 을 비즈니스 로직 끝단까지 흘려보냅니다 (가이드 §7.4 1~3단계):
+
+1. **진입 fast-fail** — 위 표(잔여 `< 50ms` → 504).
+2. **비즈니스 로직 · DB 취소** — 살아있는 deadline 으로 `RequestAborted` 에 링크된 `CancellationToken`(`CancelAfter(remaining)`)을 만들어 `HttpContext.GetRequestCancellationToken()` (컨트롤러는 `ApiControllerBase.DeadlineToken`) 으로 노출합니다. 이를 `ISender.Send` 에 넘기면 핸들러 → EF Core 쿼리/`SaveChanges` 까지 전파되어, 예산이 소진되면 실행 중인 작업이 취소됩니다. 발생한 `OperationCanceledException` 은 `ApiExceptionFilter` 가 **504 `DEADLINE_EXCEEDED`** 로 매핑합니다 — 단, 진짜 클라이언트 disconnect(=`RequestAborted` 동반 취소)는 제외합니다.
+3. **다운스트림 재전파** — `Api/Http/DeadlinePropagationHandler.cs`(`DelegatingHandler`)를 `AddHttpClient(...).AddHttpMessageHandler<DeadlinePropagationHandler>()` 로 붙이면, 받은 **절대** `X-Request-Deadline` 를 아웃바운드 HTTP 요청에 그대로 실어 전파합니다(§4.4 `traceparent` 자동 주입과 동일 패턴). 절대 시각이므로 하위 서비스가 같은 예산으로 자신의 1단계를 수행합니다. 이미 헤더가 있으면 덮어쓰지 않습니다(`AddHttpContextAccessor` + 핸들러는 `Program.cs` 에 등록됨).
+
+> 이 패턴은 서버 간 **NTP 시계 동기화**와 최소 네트워크 마진(50ms)을 전제합니다 (가이드 §7.4 주의사항).
 
 ## 테스트
 
