@@ -74,9 +74,26 @@ namespace CleanArchitecture.Infrastructure
             }
             services.AddSingleton<IIdempotencyStore, DistributedCacheIdempotencyStore>();
 
-            // "database" check verifies the EF Core connection (CanConnect) for /health.
-            services.AddHealthChecks()
-                .AddDbContextCheck<ApplicationDbContext>("database");
+            // /health checks. "database" verifies DB reachability: AddSqlServer pings the real
+            // SQL Server (SELECT 1) when DefaultConnection is configured; dev/test fall back to the
+            // InMemory provider, where AddDbContextCheck (CanConnect) keeps a green "database" entry
+            // without a SQL Server. "redis" pings the configured Redis backend (§7.1) and is only
+            // added when ConnectionStrings:Redis is set — dev/test fall back to the in-memory cache
+            // and skip it, so /health stays Healthy without a Redis server. Both mirror the
+            // SQL Server/InMemory and Redis/in-memory fallbacks chosen above.
+            var healthChecks = services.AddHealthChecks();
+            if (string.IsNullOrWhiteSpace(connectionString))
+            {
+                healthChecks.AddDbContextCheck<ApplicationDbContext>("database");
+            }
+            else
+            {
+                healthChecks.AddSqlServer(connectionString, name: "database");
+            }
+            if (!string.IsNullOrWhiteSpace(redisConnection))
+            {
+                healthChecks.AddRedis(redisConnection, name: "redis");
+            }
 
             return services;
         }
