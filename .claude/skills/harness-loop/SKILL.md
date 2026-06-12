@@ -49,7 +49,7 @@ Order matters:
 1. `dotnet build --nologo`
 2. `dotnet test --nologo --verbosity minimal`
 3. If Domain or any `.csproj` changed → delegate to `@clean-arch-guardian`.
-4. Any code change → delegate to `@dotnet-code-reviewer`.
+4. Any code change → delegate to `@dotnet-code-reviewer` (this review now includes a **SOLID** pass — a clear SRP/OCP/LSP/ISP/intra-layer-DIP violation surfaces as a `high` finding → `REQUEST_CHANGES`, so SOLID gates the merge just like arch).
 
 Compute the verdict:
 

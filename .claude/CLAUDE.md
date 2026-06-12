@@ -120,7 +120,7 @@ dotnet run --project src/CleanArchitecture.Api                    # 실행 (http
 - `clean-arch-guardian` — 계층 의존 규칙 위반 탐지
 - `cqrs-feature-scaffolder` — 새 슬라이스 일괄 생성 (worktree + 내부 병렬화 포함)
 - `dotnet-test-runner` — 계층 인지 테스트 실행 + 실패 요약
-- `dotnet-code-reviewer` — .NET / C# 9 / Clean Arch 코드 리뷰
+- `dotnet-code-reviewer` — .NET / C# 9 / Clean Arch / **SOLID** 코드 리뷰 (SOLID 명확 위반은 `high` → `REQUEST_CHANGES` 로 머지 게이트)
 - `work-orchestrator` — worktree 사이클 + 병렬 팀 조립 담당 (다단계 작업의 단일 패스 엔진; `/harness` 루프가 이 엔진을 반복 호출)
 
 **Skills** (`.claude/skills/`)

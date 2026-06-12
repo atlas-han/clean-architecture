@@ -53,7 +53,7 @@ If Domain or any csproj changed, also delegate to `clean-arch-guardian` for a la
 
 ### Phase 5 — Review + Merge (only on green, **linear / fast-forward only**)
 
-1. Delegate to `dotnet-code-reviewer` against the worktree branch's diff.
+1. Delegate to `dotnet-code-reviewer` against the worktree branch's diff (its review includes a **SOLID** pass — a clear SRP/OCP/LSP/ISP/intra-layer-DIP violation is a `high` finding → `REQUEST_CHANGES`, gating the merge).
 2. If review verdict is `APPROVE` or `COMMENT`: stage + commit any uncommitted changes with a clear message, then perform a **linear merge** — never a merge commit:
    ```bash
    # inside the worktree, after committing:
