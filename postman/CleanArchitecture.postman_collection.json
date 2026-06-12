@@ -261,6 +261,11 @@
       "key": "orderId",
       "value": "",
       "type": "string"
+    },
+    {
+      "key": "apiVersion",
+      "value": "v1",
+      "type": "string"
     }
   ]
 }
