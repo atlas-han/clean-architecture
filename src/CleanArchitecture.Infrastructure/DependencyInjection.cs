@@ -144,7 +144,7 @@ namespace CleanArchitecture.Infrastructure
             var kafkaBootstrap = configuration["Kafka:BootstrapServers"];
             var configuredTopic = configuration["Kafka:Topic"];
             var kafkaTopic = string.IsNullOrWhiteSpace(configuredTopic)
-                ? "clean-architecture.events"
+                ? "clean_architecture_events"
                 : configuredTopic;
 
             if (string.IsNullOrWhiteSpace(kafkaBootstrap))
