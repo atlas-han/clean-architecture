@@ -125,7 +125,7 @@ namespace CleanArchitecture.Api.IntegrationTests
         {
             var client = CreateClient();
 
-            var resp = await client.GetAsync($"/api/orders/{Guid.NewGuid()}");
+            var resp = await client.GetAsync($"/api/v1/orders/{Guid.NewGuid()}");
             Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
 
             var log = GetRequestLog();
@@ -139,7 +139,7 @@ namespace CleanArchitecture.Api.IntegrationTests
             var client = CreateClient();
 
             var payload = new { name = "ProbeProduct", description = "x", price = 1m, stock = 1 };
-            var resp = await client.PostAsJsonAsync("/api/products", payload);
+            var resp = await client.PostAsJsonAsync("/api/v1/products", payload);
             Assert.True(resp.IsSuccessStatusCode || resp.StatusCode == HttpStatusCode.BadRequest);
 
             var log = GetRequestLog();
@@ -159,7 +159,7 @@ namespace CleanArchitecture.Api.IntegrationTests
             // customerName is PII; order creation may be rejected (e.g. empty items),
             // but the request body is logged regardless — that is what we assert on.
             var payload = new { customerName = "Secret", items = new object[0] };
-            await client.PostAsJsonAsync("/api/orders", payload);
+            await client.PostAsJsonAsync("/api/v1/orders", payload);
 
             var log = GetRequestLog();
             var body = log.Values["request_body"] as string;
@@ -190,7 +190,7 @@ namespace CleanArchitecture.Api.IntegrationTests
             var client = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
 
             var payload = new { name = "ProbeProduct", description = "x", price = 1m, stock = 1 };
-            var resp = await client.PostAsJsonAsync("/api/products", payload);
+            var resp = await client.PostAsJsonAsync("/api/v1/products", payload);
             Assert.True(resp.IsSuccessStatusCode || resp.StatusCode == HttpStatusCode.BadRequest);
 
             var log = _factory.Provider.Entries.FirstOrDefault(e => e.Category == MiddlewareCategory);

@@ -1,6 +1,7 @@
 using System;
 using System.Linq;
 using System.Text.Json;
+using Asp.Versioning;
 using CleanArchitecture.Api.Filters;
 using CleanArchitecture.Api.Logging;
 using CleanArchitecture.Api.Middleware;
@@ -50,6 +51,29 @@ builder.Services.AddControllers(options =>
     options.Filters.Add<ApiExceptionFilter>();
 });
 
+// URI API versioning per API design guide §5.1. Version is read from the URL segment
+// (/api/v1/...) first, then the X-Api-Version header. v1.0 is assumed when unspecified, and
+// supported versions are advertised back via the api-supported-versions response header.
+builder.Services.AddApiVersioning(options =>
+{
+    options.DefaultApiVersion = new ApiVersion(1, 0);
+    options.AssumeDefaultVersionWhenUnspecified = true;
+    options.ReportApiVersions = true;
+    options.ApiVersionReader = ApiVersionReader.Combine(
+        new UrlSegmentApiVersionReader(),
+        new HeaderApiVersionReader("X-Api-Version"));
+})
+.AddMvc();
+
+// HSTS (Strict-Transport-Security) options per §9.1. UseHsts() is wired into the pipeline
+// for non-development environments only (HSTS is meaningful solely over HTTPS).
+builder.Services.AddHsts(options =>
+{
+    options.MaxAge = TimeSpan.FromDays(365);
+    options.IncludeSubDomains = true;
+    options.Preload = true;
+});
+
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
@@ -82,7 +106,17 @@ if (app.Environment.IsDevelopment() || app.Environment.IsEnvironment("Local"))
 //     c.RoutePrefix = string.Empty;
 // });
 
+if (!app.Environment.IsDevelopment() && !app.Environment.IsEnvironment("Local"))
+{
+    // HSTS is only meaningful over HTTPS; excluded in dev/Local so local HTTP isn't pinned. (§9.1)
+    app.UseHsts();
+}
+
 app.UseHttpsRedirection();
+
+// Common security headers (nosniff / X-Frame-Options / X-XSS-Protection / CSP) on every response,
+// placed before the gates below so maintenance/deadline short-circuits also carry them. (§9.1)
+app.UseMiddleware<SecurityHeadersMiddleware>();
 
 app.UseMiddleware<RequestLoggingMiddleware>();
 

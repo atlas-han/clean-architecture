@@ -43,7 +43,7 @@ namespace CleanArchitecture.Api.IntegrationTests
             var stop = await client.PostAsync("/admin/maintenance/stop", null);
             Assert.Equal(HttpStatusCode.OK, stop.StatusCode);
 
-            var resp = await client.GetAsync("/api/products");
+            var resp = await client.GetAsync("/api/v1/products");
 
             Assert.Equal(HttpStatusCode.ServiceUnavailable, resp.StatusCode);
             Assert.True(resp.Headers.TryGetValues("Retry-After", out _));
@@ -70,11 +70,11 @@ namespace CleanArchitecture.Api.IntegrationTests
             var client = CreateResumedClient();
 
             await client.PostAsync("/admin/maintenance/stop", null);
-            var stopped = await client.GetAsync("/api/products");
+            var stopped = await client.GetAsync("/api/v1/products");
             Assert.Equal(HttpStatusCode.ServiceUnavailable, stopped.StatusCode);
 
             await client.PostAsync("/admin/maintenance/resume", null);
-            var resumed = await client.GetAsync("/api/products");
+            var resumed = await client.GetAsync("/api/v1/products");
             Assert.Equal(HttpStatusCode.OK, resumed.StatusCode);
         }
 
@@ -115,7 +115,7 @@ namespace CleanArchitecture.Api.IntegrationTests
                 AllowAutoRedirect = false
             });
 
-            var resp = await client.GetAsync("/api/products");
+            var resp = await client.GetAsync("/api/v1/products");
 
             Assert.Equal(HttpStatusCode.ServiceUnavailable, resp.StatusCode);
         }

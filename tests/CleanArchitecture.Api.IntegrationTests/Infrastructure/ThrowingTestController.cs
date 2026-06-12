@@ -1,4 +1,5 @@
 using System;
+using Asp.Versioning;
 using CleanArchitecture.Api.Middleware;
 using CleanArchitecture.Domain.Exceptions;
 using Microsoft.AspNetCore.Mvc;
@@ -6,7 +7,10 @@ using Microsoft.EntityFrameworkCore;
 
 namespace CleanArchitecture.Api.IntegrationTests.Infrastructure
 {
+    // Version-neutral: this probe lives at /api/_test (no version segment) and must keep
+    // resolving once URI versioning is enabled on the real controllers.
     [ApiController]
+    [ApiVersionNeutral]
     [Route("api/_test")]
     public class ThrowingTestController : ControllerBase
     {

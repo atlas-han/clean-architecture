@@ -37,7 +37,7 @@ namespace CleanArchitecture.Api.IntegrationTests
                 price,
                 stock
             };
-            var resp = await _client.PostAsJsonAsync("/api/products", payload);
+            var resp = await _client.PostAsJsonAsync("/api/v1/products", payload);
             Assert.Equal(HttpStatusCode.Created, resp.StatusCode);
             return await ReadCreatedIdAsync(resp);
         }
@@ -56,7 +56,7 @@ namespace CleanArchitecture.Api.IntegrationTests
                 }
             };
 
-            var createResp = await _client.PostAsJsonAsync("/api/orders", orderPayload);
+            var createResp = await _client.PostAsJsonAsync("/api/v1/orders", orderPayload);
             Assert.Equal(HttpStatusCode.Created, createResp.StatusCode);
             Assert.NotNull(createResp.Headers.Location);
 
@@ -66,7 +66,7 @@ namespace CleanArchitecture.Api.IntegrationTests
             Assert.Equal(orderPayload.customerName, created.GetProperty("customerName").GetString());
             Assert.Equal(150m, created.GetProperty("totalAmount").GetDecimal());
 
-            var getResp = await _client.GetAsync($"/api/orders/{id}");
+            var getResp = await _client.GetAsync($"/api/v1/orders/{id}");
             Assert.Equal(HttpStatusCode.OK, getResp.StatusCode);
 
             var data = (await getResp.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("data");
@@ -80,7 +80,7 @@ namespace CleanArchitecture.Api.IntegrationTests
         {
             var payload = new { customerName = "", items = new object[0] };
 
-            var resp = await _client.PostAsJsonAsync("/api/orders", payload);
+            var resp = await _client.PostAsJsonAsync("/api/v1/orders", payload);
 
             Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
             var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
@@ -100,7 +100,7 @@ namespace CleanArchitecture.Api.IntegrationTests
                 items = new[] { new { productId, quantity = 5 } }
             };
 
-            var resp = await _client.PostAsJsonAsync("/api/orders", payload);
+            var resp = await _client.PostAsJsonAsync("/api/v1/orders", payload);
 
             Assert.Equal(HttpStatusCode.UnprocessableEntity, resp.StatusCode);
         }
@@ -117,7 +117,7 @@ namespace CleanArchitecture.Api.IntegrationTests
                 }
             };
 
-            var resp = await _client.PostAsJsonAsync("/api/orders", payload);
+            var resp = await _client.PostAsJsonAsync("/api/v1/orders", payload);
 
             Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
         }
@@ -125,7 +125,7 @@ namespace CleanArchitecture.Api.IntegrationTests
         [Fact]
         public async Task Get_UnknownId_Returns_404()
         {
-            var resp = await _client.GetAsync($"/api/orders/{Guid.NewGuid()}");
+            var resp = await _client.GetAsync($"/api/v1/orders/{Guid.NewGuid()}");
             Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
         }
 
@@ -138,13 +138,13 @@ namespace CleanArchitecture.Api.IntegrationTests
                 customerName = "Carol",
                 items = new[] { new { productId, quantity = 1 } }
             };
-            var createResp = await _client.PostAsJsonAsync("/api/orders", orderPayload);
+            var createResp = await _client.PostAsJsonAsync("/api/v1/orders", orderPayload);
             var id = await ReadCreatedIdAsync(createResp);
 
-            var cancelResp = await _client.PostAsync($"/api/orders/{id}/cancel", null);
+            var cancelResp = await _client.PostAsync($"/api/v1/orders/{id}/cancel", null);
             Assert.Equal(HttpStatusCode.NoContent, cancelResp.StatusCode);
 
-            var getResp = await _client.GetAsync($"/api/orders/{id}");
+            var getResp = await _client.GetAsync($"/api/v1/orders/{id}");
             var data = (await getResp.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("data");
             Assert.Equal(2, data.GetProperty("status").GetInt32());
         }
@@ -152,7 +152,7 @@ namespace CleanArchitecture.Api.IntegrationTests
         [Fact]
         public async Task Cancel_UnknownId_Returns_404()
         {
-            var resp = await _client.PostAsync($"/api/orders/{Guid.NewGuid()}/cancel", null);
+            var resp = await _client.PostAsync($"/api/v1/orders/{Guid.NewGuid()}/cancel", null);
             Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
         }
 
@@ -165,13 +165,13 @@ namespace CleanArchitecture.Api.IntegrationTests
                 customerName = "Frank",
                 items = new[] { new { productId, quantity = 1 } }
             };
-            var createResp = await _client.PostAsJsonAsync("/api/orders", orderPayload);
+            var createResp = await _client.PostAsJsonAsync("/api/v1/orders", orderPayload);
             var id = await ReadCreatedIdAsync(createResp);
 
-            var confirmResp = await _client.PostAsync($"/api/orders/{id}/confirm", null);
+            var confirmResp = await _client.PostAsync($"/api/v1/orders/{id}/confirm", null);
             Assert.Equal(HttpStatusCode.NoContent, confirmResp.StatusCode);
 
-            var getResp = await _client.GetAsync($"/api/orders/{id}");
+            var getResp = await _client.GetAsync($"/api/v1/orders/{id}");
             var data = (await getResp.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("data");
             Assert.Equal(1, data.GetProperty("status").GetInt32());
         }
@@ -179,7 +179,7 @@ namespace CleanArchitecture.Api.IntegrationTests
         [Fact]
         public async Task Confirm_UnknownId_Returns_404()
         {
-            var resp = await _client.PostAsync($"/api/orders/{Guid.NewGuid()}/confirm", null);
+            var resp = await _client.PostAsync($"/api/v1/orders/{Guid.NewGuid()}/confirm", null);
             Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
         }
 
@@ -192,13 +192,13 @@ namespace CleanArchitecture.Api.IntegrationTests
                 customerName = "Grace",
                 items = new[] { new { productId, quantity = 1 } }
             };
-            var createResp = await _client.PostAsJsonAsync("/api/orders", orderPayload);
+            var createResp = await _client.PostAsJsonAsync("/api/v1/orders", orderPayload);
             var id = await ReadCreatedIdAsync(createResp);
 
-            var cancelResp = await _client.PostAsync($"/api/orders/{id}/cancel", null);
+            var cancelResp = await _client.PostAsync($"/api/v1/orders/{id}/cancel", null);
             Assert.Equal(HttpStatusCode.NoContent, cancelResp.StatusCode);
 
-            var confirmResp = await _client.PostAsync($"/api/orders/{id}/confirm", null);
+            var confirmResp = await _client.PostAsync($"/api/v1/orders/{id}/confirm", null);
             Assert.Equal(HttpStatusCode.UnprocessableEntity, confirmResp.StatusCode);
         }
 
@@ -213,18 +213,18 @@ namespace CleanArchitecture.Api.IntegrationTests
                 items = new[] { new { productId, quantity = 3 } }
             };
 
-            var placeResp = await _client.PostAsJsonAsync("/api/orders/place", payload);
+            var placeResp = await _client.PostAsJsonAsync("/api/v1/orders/place", payload);
             Assert.Equal(HttpStatusCode.Created, placeResp.StatusCode);
 
             var id = await ReadCreatedIdAsync(placeResp);
             Assert.NotEqual(Guid.Empty, id);
 
-            var getOrder = await _client.GetAsync($"/api/orders/{id}");
+            var getOrder = await _client.GetAsync($"/api/v1/orders/{id}");
             Assert.Equal(HttpStatusCode.OK, getOrder.StatusCode);
             var orderData = (await getOrder.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("data");
             Assert.Equal(120m, orderData.GetProperty("totalAmount").GetDecimal());
 
-            var getProduct = await _client.GetAsync($"/api/products/{productId}");
+            var getProduct = await _client.GetAsync($"/api/v1/products/{productId}");
             Assert.Equal(HttpStatusCode.OK, getProduct.StatusCode);
             var productData = (await getProduct.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("data");
             Assert.Equal(7, productData.GetProperty("stock").GetInt32());
@@ -241,7 +241,7 @@ namespace CleanArchitecture.Api.IntegrationTests
                 items = new[] { new { productId, quantity = 5 } }
             };
 
-            var resp = await _client.PostAsJsonAsync("/api/orders/place", payload);
+            var resp = await _client.PostAsJsonAsync("/api/v1/orders/place", payload);
 
             Assert.Equal(HttpStatusCode.UnprocessableEntity, resp.StatusCode);
         }
@@ -257,10 +257,10 @@ namespace CleanArchitecture.Api.IntegrationTests
                 customerName = marker,
                 items = new[] { new { productId, quantity = 2 } }
             };
-            var createResp = await _client.PostAsJsonAsync("/api/orders", orderPayload);
+            var createResp = await _client.PostAsJsonAsync("/api/v1/orders", orderPayload);
             Assert.Equal(HttpStatusCode.Created, createResp.StatusCode);
 
-            var listResp = await _client.GetAsync("/api/orders?page=1&pageSize=100");
+            var listResp = await _client.GetAsync("/api/v1/orders?page=1&pageSize=100");
             Assert.Equal(HttpStatusCode.OK, listResp.StatusCode);
 
             var envelope = await listResp.Content.ReadFromJsonAsync<JsonElement>();

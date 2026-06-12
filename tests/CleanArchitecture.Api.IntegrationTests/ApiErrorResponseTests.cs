@@ -26,7 +26,7 @@ namespace CleanArchitecture.Api.IntegrationTests
         {
             var payload = new { name = "", description = "", price = -1m, stock = -1 };
 
-            var resp = await _client.PostAsJsonAsync("/api/products", payload);
+            var resp = await _client.PostAsJsonAsync("/api/v1/products", payload);
 
             Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
             var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
@@ -41,7 +41,7 @@ namespace CleanArchitecture.Api.IntegrationTests
         [Fact]
         public async Task NotFound_404_Response_Has_ErrorEnvelope_Without_Details()
         {
-            var resp = await _client.GetAsync($"/api/products/{Guid.NewGuid()}");
+            var resp = await _client.GetAsync($"/api/v1/products/{Guid.NewGuid()}");
 
             Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
             var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
@@ -62,7 +62,7 @@ namespace CleanArchitecture.Api.IntegrationTests
                 items = new[] { new { productId, quantity = 5 } }
             };
 
-            var resp = await _client.PostAsJsonAsync("/api/orders/place", payload);
+            var resp = await _client.PostAsJsonAsync("/api/v1/orders/place", payload);
 
             Assert.Equal(HttpStatusCode.UnprocessableEntity, resp.StatusCode);
             var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
@@ -139,7 +139,7 @@ namespace CleanArchitecture.Api.IntegrationTests
                 price,
                 stock
             };
-            var resp = await _client.PostAsJsonAsync("/api/products", payload);
+            var resp = await _client.PostAsJsonAsync("/api/v1/products", payload);
             Assert.Equal(HttpStatusCode.Created, resp.StatusCode);
             var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
             return body.GetProperty("data").GetProperty("id").GetGuid();
