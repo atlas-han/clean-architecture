@@ -93,5 +93,23 @@ namespace CleanArchitecture.Api.IntegrationTests
             // Drained into the outbox, so a second SaveChanges can't double-publish them.
             Assert.Empty(order.DomainEvents);
         }
+
+        [Fact]
+        public async Task OutboxRow_Id_IsUuidVersion7()
+        {
+            var dateTime = new FixedDateTime();
+            using var context = NewContext(dateTime);
+
+            var order = new Order("Carol", new[] { new OrderItem(Guid.NewGuid(), "Widget", new Money(10m), 1) });
+            context.Orders.Add(order);
+            await context.SaveChangesAsync(CancellationToken.None);
+
+            // OutboxMessage.Id defaults to Guid.CreateVersion7() — time-ordered, so it doubles as a
+            // stable insert order. Guard that the version nibble stays 7 so it can't silently
+            // regress to a random (v4) GUID.
+            var message = Assert.Single(await context.OutboxMessages.ToListAsync());
+            Assert.NotEqual(Guid.Empty, message.Id);
+            Assert.Equal(7, message.Id.Version);
+        }
     }
 }
