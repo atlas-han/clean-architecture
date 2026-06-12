@@ -157,7 +157,19 @@ namespace CleanArchitecture.Infrastructure
                         "Development/Local. Configure Kafka:BootstrapServers, or run in Development/Local.");
                 }
 
-                services.AddSingleton<IEventPublisher, LoggingEventPublisher>();
+                // Dev/Local with no broker configured: register the no-op fallback, but emit a loud
+                // WARNING on first resolution so the degraded mode is never silent. Without it the
+                // worker logs every row as "published" while nothing reaches Kafka. The factory (over
+                // the plain type registration) is what lets us log at the selection site.
+                services.AddSingleton<IEventPublisher>(provider =>
+                {
+                    var logger = provider.GetRequiredService<ILogger<LoggingEventPublisher>>();
+                    logger.LogWarning(
+                        "Kafka:BootstrapServers is not configured - using the LoggingEventPublisher fallback. " +
+                        "Outbox events are logged only and are NOT published to Kafka. Set Kafka:BootstrapServers " +
+                        "(e.g. run the Worker in the Local environment) to publish to a real broker.");
+                    return new LoggingEventPublisher(logger);
+                });
             }
             else
             {
