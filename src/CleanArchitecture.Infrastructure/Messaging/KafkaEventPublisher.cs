@@ -28,7 +28,7 @@ namespace CleanArchitecture.Infrastructure.Messaging
             _topic = topic;
         }
 
-        public async Task PublishAsync(string eventType, string key, string payload, CancellationToken cancellationToken)
+        public async Task PublishAsync(string eventType, string key, string payload, string idempotencyKey, CancellationToken cancellationToken)
         {
             var message = new Message<string, string>
             {
@@ -36,7 +36,11 @@ namespace CleanArchitecture.Infrastructure.Messaging
                 Value = payload,
                 Headers = new Headers
                 {
-                    { "event-type", Encoding.UTF8.GetBytes(eventType) }
+                    // Payload is JSON-serialized; Idempotency-Key is the OutboxMessage.Id (broker-side
+                    // dedupe); MessageType is the OutboxMessage.Type (logical event name).
+                    { "Type", Encoding.UTF8.GetBytes("json") },
+                    { "Idempotency-Key", Encoding.UTF8.GetBytes(idempotencyKey) },
+                    { "MessageType", Encoding.UTF8.GetBytes(eventType) }
                 }
             };
 

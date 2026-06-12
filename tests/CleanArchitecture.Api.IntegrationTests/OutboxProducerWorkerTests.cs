@@ -38,19 +38,19 @@ namespace CleanArchitecture.Api.IntegrationTests
 
         private sealed class RecordingPublisher : IEventPublisher
         {
-            public List<(string Type, string Key, string Payload)> Published { get; } =
-                new List<(string, string, string)>();
+            public List<(string Type, string Key, string Payload, string IdempotencyKey)> Published { get; } =
+                new List<(string, string, string, string)>();
 
-            public Task PublishAsync(string eventType, string key, string payload, CancellationToken cancellationToken)
+            public Task PublishAsync(string eventType, string key, string payload, string idempotencyKey, CancellationToken cancellationToken)
             {
-                Published.Add((eventType, key, payload));
+                Published.Add((eventType, key, payload, idempotencyKey));
                 return Task.CompletedTask;
             }
         }
 
         private sealed class ThrowingPublisher : IEventPublisher
         {
-            public Task PublishAsync(string eventType, string key, string payload, CancellationToken cancellationToken) =>
+            public Task PublishAsync(string eventType, string key, string payload, string idempotencyKey, CancellationToken cancellationToken) =>
                 throw new InvalidOperationException("broker down");
         }
 
@@ -69,7 +69,7 @@ namespace CleanArchitecture.Api.IntegrationTests
             public List<(string Type, string Key, string Payload)> Published { get; } =
                 new List<(string, string, string)>();
 
-            public Task PublishAsync(string eventType, string key, string payload, CancellationToken cancellationToken)
+            public Task PublishAsync(string eventType, string key, string payload, string idempotencyKey, CancellationToken cancellationToken)
             {
                 _calls++;
                 if (_calls <= _failTimes)
@@ -98,7 +98,7 @@ namespace CleanArchitecture.Api.IntegrationTests
 
             public void Release() => _release.TrySetResult(true);
 
-            public async Task PublishAsync(string eventType, string key, string payload, CancellationToken cancellationToken)
+            public async Task PublishAsync(string eventType, string key, string payload, string idempotencyKey, CancellationToken cancellationToken)
             {
                 ReceivedTokenCanBeCanceled = cancellationToken.CanBeCanceled;
                 _entered.TrySetResult(true);
@@ -189,6 +189,9 @@ namespace CleanArchitecture.Api.IntegrationTests
 
             var message = Assert.Single(await ReadOutboxAsync(provider));
             Assert.Equal(sent.Key, message.AggregateId.ToString());
+            // MessageType header = OutboxMessage.Type; Idempotency-Key header = OutboxMessage.Id.
+            Assert.Equal(message.Type, sent.Type);
+            Assert.Equal(message.Id.ToString(), sent.IdempotencyKey);
             Assert.NotNull(message.ProcessedOnUtc);
             Assert.Null(message.Error);
         }

@@ -8,6 +8,9 @@ namespace CleanArchitecture.Infrastructure.Messaging
     // unit-testable without a broker. Not a hosted service — the worker owns the loop.
     public interface IEventPublisher
     {
-        Task PublishAsync(string eventType, string key, string payload, CancellationToken cancellationToken);
+        // idempotencyKey carries the OutboxMessage.Id so the broker side can dedupe; eventType is the
+        // OutboxMessage.Type. The Kafka producer surfaces both as message headers (Idempotency-Key /
+        // MessageType).
+        Task PublishAsync(string eventType, string key, string payload, string idempotencyKey, CancellationToken cancellationToken);
     }
 }

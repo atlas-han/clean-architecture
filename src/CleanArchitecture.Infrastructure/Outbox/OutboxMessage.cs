@@ -16,7 +16,7 @@ namespace CleanArchitecture.Infrastructure.Outbox
         // same order/product keep their relative order.
         public Guid AggregateId { get; set; }
 
-        // Logical event name (e.g. "OrderPlacedDomainEvent"), surfaced as the Kafka event-type header.
+        // Logical event name (e.g. "OrderPlacedDomainEvent"), surfaced as the Kafka MessageType header.
         public string Type { get; set; } = string.Empty;
 
         // JSON-serialized event payload.

@@ -17,11 +17,11 @@ namespace CleanArchitecture.Infrastructure.Messaging
             _logger = logger;
         }
 
-        public Task PublishAsync(string eventType, string key, string payload, CancellationToken cancellationToken)
+        public Task PublishAsync(string eventType, string key, string payload, string idempotencyKey, CancellationToken cancellationToken)
         {
             _logger.LogInformation(
-                "Outbox event published (logging fallback): type={event_type} key={event_key} payload={event_payload}",
-                eventType, key, payload);
+                "Outbox event published (logging fallback): type={event_type} key={event_key} idempotency_key={idempotency_key} payload={event_payload}",
+                eventType, key, idempotencyKey, payload);
 
             return Task.CompletedTask;
         }

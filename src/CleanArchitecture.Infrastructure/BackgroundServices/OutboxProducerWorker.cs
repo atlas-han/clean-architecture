@@ -130,6 +130,7 @@ namespace CleanArchitecture.Infrastructure.BackgroundServices
                             message.Type,
                             message.AggregateId.ToString(),
                             message.Content,
+                            message.Id.ToString(),
                             cancellationToken);
 
                         message.ProcessedOnUtc = dateTime.UtcNow;
