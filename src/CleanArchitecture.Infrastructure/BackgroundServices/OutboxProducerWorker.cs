@@ -120,6 +120,10 @@ namespace CleanArchitecture.Infrastructure.BackgroundServices
                         message.ProcessedOnUtc = dateTime.UtcNow;
                         message.Error = null;
                         published++;
+
+                        _logger.LogInformation(
+                            "Published outbox message {outbox_id} (type {event_type})",
+                            message.Id, message.Type);
                     }
                     catch (Exception ex) when (!(ex is OperationCanceledException && cancellationToken.IsCancellationRequested))
                     {

@@ -13,6 +13,7 @@ using CleanArchitecture.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
@@ -79,6 +80,29 @@ namespace CleanArchitecture.Api.IntegrationTests
             }
         }
 
+        // Captures the formatted message + level of every log call so a test can assert the
+        // success log fires (the failure paths already log; only the success path was missing).
+        private sealed class RecordingLogger<T> : ILogger<T>
+        {
+            public List<(LogLevel Level, string Message)> Entries { get; } =
+                new List<(LogLevel, string)>();
+
+            public IDisposable BeginScope<TState>(TState state) where TState : notnull => NullScope.Instance;
+
+            public bool IsEnabled(LogLevel logLevel) => true;
+
+            public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+            {
+                Entries.Add((logLevel, formatter(state, exception)));
+            }
+
+            private sealed class NullScope : IDisposable
+            {
+                public static readonly NullScope Instance = new NullScope();
+                public void Dispose() { }
+            }
+        }
+
         private static ServiceProvider BuildProvider(IEventPublisher publisher, IDateTime dateTime)
         {
             // One database name per provider (computed once, not inside the lambda) so every scoped
@@ -140,6 +164,29 @@ namespace CleanArchitecture.Api.IntegrationTests
             Assert.Equal(sent.Key, message.AggregateId.ToString());
             Assert.NotNull(message.ProcessedOnUtc);
             Assert.Null(message.Error);
+        }
+
+        [Fact]
+        public async Task ProduceBatchAsync_OnPublishSuccess_LogsPublishedWithOutboxId()
+        {
+            var publisher = new RecordingPublisher();
+            using var provider = BuildProvider(publisher, new FixedDateTime());
+            await SeedOrderAsync(provider);
+
+            var logger = new RecordingLogger<OutboxProducerWorker>();
+            var worker = new OutboxProducerWorker(
+                provider.GetRequiredService<IServiceScopeFactory>(),
+                new FakeMaintenanceState(),
+                logger,
+                TimeSpan.FromSeconds(1),
+                100,
+                100);
+
+            await worker.ProduceBatchAsync(CancellationToken.None);
+
+            var message = Assert.Single(await ReadOutboxAsync(provider));
+            Assert.Single(logger.Entries,
+                e => e.Level == LogLevel.Information && e.Message.Contains(message.Id.ToString()));
         }
 
         [Fact]
