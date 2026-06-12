@@ -66,7 +66,7 @@ var app = builder.Build();
 var lifetime = app.Lifetime;
 var shutdownLogger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("GracefulShutdown");
 lifetime.ApplicationStopping.Register(() =>
-    shutdownLogger.LogInformation("Application stopping: draining in-flight requests (timeout {ShutdownTimeoutSeconds}s)", shutdownTimeout.TotalSeconds));
+    shutdownLogger.LogInformation("Application stopping: draining in-flight requests (timeout {shutdown_timeout_seconds}s)", shutdownTimeout.TotalSeconds));
 lifetime.ApplicationStopped.Register(() =>
     shutdownLogger.LogInformation("Application stopped"));
 

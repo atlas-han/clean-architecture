@@ -12,7 +12,8 @@ namespace CleanArchitecture.Api.Logging
 {
     // Emits the unified API server logging spec (API design guide §14.3).
     // Field names and casing are a fixed contract with the log pipeline (ELK/CloudWatch):
-    // keys are written verbatim — do NOT re-case them here.
+    // state/scope keys are written verbatim (they arrive already in snake_case from the
+    // source) — do NOT re-case them here. The keys this class owns are snake_case too.
     public class JsonConsoleFormatter : ConsoleFormatter
     {
         public const string FormatterName = "unified_json";
@@ -20,7 +21,7 @@ namespace CleanArchitecture.Api.Logging
         private const string OriginalFormatKey = "{OriginalFormat}";
 
         // ASP.NET hosting/Kestrel scopes inject these PascalCase keys on every request log;
-        // they duplicate the §14.3 contract fields (traceID/spanID/requestUUID) as noise.
+        // they duplicate the §14.3 contract fields (trace_id/span_id/request_id) as noise.
         private static readonly HashSet<string> ExcludedScopeKeys = new HashSet<string>(StringComparer.Ordinal)
         {
             "RequestPath",
@@ -66,7 +67,7 @@ namespace CleanArchitecture.Api.Logging
                 {
                     ["type"] = logEntry.Exception.GetType().FullName,
                     ["message"] = logEntry.Exception.Message,
-                    ["stackTrace"] = logEntry.Exception.StackTrace
+                    ["stack_trace"] = logEntry.Exception.StackTrace
                 };
             }
 

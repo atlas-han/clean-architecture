@@ -50,19 +50,19 @@ namespace CleanArchitecture.Api.IntegrationTests
             // §14.3 unified spec — field names are a fixed contract, casing included.
             Assert.Equal("GET", log.Values["method"]);
             Assert.Equal("/health?probe=1", log.Values["pathname"]);
-            Assert.Equal(200, log.Values["statusCode"]);
-            Assert.Equal("Development", log.Values["apienvironment"]);
-            Assert.Equal(Environment.MachineName, log.Values["serverHostname"]);
+            Assert.Equal(200, log.Values["status_code"]);
+            Assert.Equal("Development", log.Values["api_environment"]);
+            Assert.Equal(Environment.MachineName, log.Values["server_hostname"]);
             Assert.False(string.IsNullOrEmpty(log.Values["host"] as string));
-            Assert.False(string.IsNullOrEmpty(log.Values["traceID"] as string));
-            Assert.False(string.IsNullOrEmpty(log.Values["requestUUID"] as string));
-            Assert.True(log.Values.ContainsKey("spanID"));
-            Assert.True(log.Values.ContainsKey("remoteAddr"));
-            Assert.True(log.Values.ContainsKey("endpointHandler"));
-            Assert.True(log.Values.ContainsKey("reqBodyBytes"));
-            Assert.True(log.Values.ContainsKey("resBodyBytes"));
+            Assert.False(string.IsNullOrEmpty(log.Values["trace_id"] as string));
+            Assert.False(string.IsNullOrEmpty(log.Values["request_id"] as string));
+            Assert.True(log.Values.ContainsKey("span_id"));
+            Assert.True(log.Values.ContainsKey("remote_addr"));
+            Assert.True(log.Values.ContainsKey("endpoint_handler"));
+            Assert.True(log.Values.ContainsKey("req_body_bytes"));
+            Assert.True(log.Values.ContainsKey("res_body_bytes"));
 
-            var latency = Assert.IsType<double>(log.Values["latencyMs"]);
+            var latency = Assert.IsType<double>(log.Values["latency_ms"]);
             Assert.True(latency >= 0);
 
             Assert.StartsWith("HTTP GET /health?probe=1 -> 200 (", log.Message);
@@ -82,7 +82,7 @@ namespace CleanArchitecture.Api.IntegrationTests
             Assert.Equal(supplied, resp.Headers.GetValues("X-Request-Id").Single());
 
             var log = GetRequestLog();
-            Assert.Equal(supplied, log.Values["requestUUID"]);
+            Assert.Equal(supplied, log.Values["request_id"]);
         }
 
         [Fact]
@@ -98,7 +98,7 @@ namespace CleanArchitecture.Api.IntegrationTests
             Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
 
             var log = GetRequestLog();
-            Assert.Equal(supplied, log.Values["requestUUID"]);
+            Assert.Equal(supplied, log.Values["request_id"]);
         }
 
         [Fact]
@@ -110,12 +110,12 @@ namespace CleanArchitecture.Api.IntegrationTests
             Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
 
             var log = GetRequestLog();
-            Assert.True(log.Values.ContainsKey("responseBody"));
-            var body = log.Values["responseBody"] as string;
+            Assert.True(log.Values.ContainsKey("response_body"));
+            var body = log.Values["response_body"] as string;
             Assert.False(string.IsNullOrEmpty(body));
             Assert.Contains("\"status\"", body!);
 
-            var resBodyBytes = Assert.IsType<long>(log.Values["resBodyBytes"]);
+            var resBodyBytes = Assert.IsType<long>(log.Values["res_body_bytes"]);
             Assert.True(resBodyBytes > 0);
         }
 
@@ -129,7 +129,7 @@ namespace CleanArchitecture.Api.IntegrationTests
 
             var log = GetRequestLog();
             Assert.Equal(LogLevel.Warning, log.Level);
-            Assert.Equal(404, log.Values["statusCode"]);
+            Assert.Equal(404, log.Values["status_code"]);
         }
 
         [Fact]
@@ -142,11 +142,11 @@ namespace CleanArchitecture.Api.IntegrationTests
             Assert.True(resp.IsSuccessStatusCode || resp.StatusCode == HttpStatusCode.BadRequest);
 
             var log = GetRequestLog();
-            var body = log.Values["requestBody"] as string;
+            var body = log.Values["request_body"] as string;
             Assert.False(string.IsNullOrEmpty(body));
             Assert.Contains("ProbeProduct", body!);
 
-            var reqBodyBytes = Assert.IsType<long>(log.Values["reqBodyBytes"]);
+            var reqBodyBytes = Assert.IsType<long>(log.Values["req_body_bytes"]);
             Assert.True(reqBodyBytes > 0);
         }
     }
@@ -176,10 +176,10 @@ namespace CleanArchitecture.Api.IntegrationTests
             Assert.NotNull(log);
 
             // §14.6: bodies are off by default outside debug paths; byte counts remain.
-            Assert.False(log!.Values.ContainsKey("requestBody"));
-            Assert.False(log.Values.ContainsKey("responseBody"));
-            Assert.True(log.Values.ContainsKey("reqBodyBytes"));
-            Assert.True(log.Values.ContainsKey("resBodyBytes"));
+            Assert.False(log!.Values.ContainsKey("request_body"));
+            Assert.False(log.Values.ContainsKey("response_body"));
+            Assert.True(log.Values.ContainsKey("req_body_bytes"));
+            Assert.True(log.Values.ContainsKey("res_body_bytes"));
         }
     }
 }

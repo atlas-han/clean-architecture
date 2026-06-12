@@ -25,11 +25,11 @@ namespace CleanArchitecture.Api.IntegrationTests
             var formatter = CreateFormatter();
             var state = new List<KeyValuePair<string, object?>>
             {
-                new KeyValuePair<string, object?>("requestUUID", "req-1"),
-                new KeyValuePair<string, object?>("traceID", "trace-1"),
-                new KeyValuePair<string, object?>("latencyMs", 12.5d),
+                new KeyValuePair<string, object?>("request_id", "req-1"),
+                new KeyValuePair<string, object?>("trace_id", "trace-1"),
+                new KeyValuePair<string, object?>("latency_ms", 12.5d),
                 new KeyValuePair<string, object?>("pathname", "/health?x=1"),
-                new KeyValuePair<string, object?>("statusCode", 200),
+                new KeyValuePair<string, object?>("status_code", 200),
                 new KeyValuePair<string, object?>("error_type", "ValidationError")
             };
 
@@ -56,17 +56,17 @@ namespace CleanArchitecture.Api.IntegrationTests
             Assert.Equal("HTTP GET /health?x=1 -> 200 (12.5ms)", root.GetProperty("message").GetString());
             Assert.True(root.TryGetProperty("timestamp", out _));
 
-            // Keys pass through verbatim — the §14.3 spec casing is the pipeline contract.
-            Assert.Equal("req-1", root.GetProperty("requestUUID").GetString());
-            Assert.Equal("trace-1", root.GetProperty("traceID").GetString());
-            Assert.Equal(12.5d, root.GetProperty("latencyMs").GetDouble());
+            // Keys pass through verbatim — the §14.3 spec snake_case casing is the pipeline contract.
+            Assert.Equal("req-1", root.GetProperty("request_id").GetString());
+            Assert.Equal("trace-1", root.GetProperty("trace_id").GetString());
+            Assert.Equal(12.5d, root.GetProperty("latency_ms").GetDouble());
             Assert.Equal("/health?x=1", root.GetProperty("pathname").GetString());
-            Assert.Equal(200, root.GetProperty("statusCode").GetInt32());
+            Assert.Equal(200, root.GetProperty("status_code").GetInt32());
             Assert.Equal("ValidationError", root.GetProperty("error_type").GetString());
 
-            Assert.False(root.TryGetProperty("request_uuid", out _));
-            Assert.False(root.TryGetProperty("trace_id", out _));
-            Assert.False(root.TryGetProperty("latency_ms", out _));
+            Assert.False(root.TryGetProperty("requestUUID", out _));
+            Assert.False(root.TryGetProperty("traceID", out _));
+            Assert.False(root.TryGetProperty("latencyMs", out _));
         }
 
         [Fact]
@@ -76,9 +76,9 @@ namespace CleanArchitecture.Api.IntegrationTests
             var scopeProvider = new LoggerExternalScopeProvider();
             using var scope = scopeProvider.Push(new Dictionary<string, object?>
             {
-                ["traceID"] = "trace-9",
-                ["spanID"] = "span-9",
-                ["requestUUID"] = "req-9"
+                ["trace_id"] = "trace-9",
+                ["span_id"] = "span-9",
+                ["request_id"] = "req-9"
             });
             // Hosting/Kestrel scope noise — duplicates the contract fields and must be dropped.
             using var hostingScope = scopeProvider.Push(new Dictionary<string, object?>
@@ -105,9 +105,9 @@ namespace CleanArchitecture.Api.IntegrationTests
             using var doc = JsonDocument.Parse(writer.ToString().Trim());
             var root = doc.RootElement;
 
-            Assert.Equal("trace-9", root.GetProperty("traceID").GetString());
-            Assert.Equal("span-9", root.GetProperty("spanID").GetString());
-            Assert.Equal("req-9", root.GetProperty("requestUUID").GetString());
+            Assert.Equal("trace-9", root.GetProperty("trace_id").GetString());
+            Assert.Equal("span-9", root.GetProperty("span_id").GetString());
+            Assert.Equal("req-9", root.GetProperty("request_id").GetString());
 
             Assert.False(root.TryGetProperty("RequestId", out _));
             Assert.False(root.TryGetProperty("RequestPath", out _));
@@ -159,7 +159,7 @@ namespace CleanArchitecture.Api.IntegrationTests
             Assert.Equal(JsonValueKind.Object, exception.ValueKind);
             Assert.Equal("System.InvalidOperationException", exception.GetProperty("type").GetString());
             Assert.Equal("boom", exception.GetProperty("message").GetString());
-            Assert.False(string.IsNullOrEmpty(exception.GetProperty("stackTrace").GetString()));
+            Assert.False(string.IsNullOrEmpty(exception.GetProperty("stack_trace").GetString()));
         }
 
         [Fact]

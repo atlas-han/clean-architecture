@@ -12,7 +12,7 @@ namespace CleanArchitecture.Api.Middleware
 {
     // Emits one access log per HTTP request using the unified API server logging
     // spec (API design guide §14.3/§14.4). Field names are a fixed contract with
-    // the log pipeline — keep casing exactly as-is (traceID, requestUUID, latencyMs...).
+    // the log pipeline — keep them exactly as-is, in snake_case (trace_id, request_id, latency_ms...).
     public class RequestLoggingMiddleware
     {
         private const int MaxBodyLength = 4096;
@@ -67,9 +67,9 @@ namespace CleanArchitecture.Api.Middleware
             // this request (handlers, filters, this access log) carries them automatically.
             using var scope = _logger.BeginScope(new Dictionary<string, object?>
             {
-                ["traceID"] = traceId,
-                ["spanID"] = spanId,
-                ["requestUUID"] = requestUuid
+                ["trace_id"] = traceId,
+                ["span_id"] = spanId,
+                ["request_id"] = requestUuid
             });
 
             // Response stream is wrapped so resBodyBytes is exact (§14.4).
@@ -123,20 +123,20 @@ namespace CleanArchitecture.Api.Middleware
 
                 var state = new List<KeyValuePair<string, object?>>
                 {
-                    new KeyValuePair<string, object?>("apienvironment", _environment.EnvironmentName),
-                    new KeyValuePair<string, object?>("requestUUID", requestUuid),
-                    new KeyValuePair<string, object?>("traceID", traceId),
-                    new KeyValuePair<string, object?>("spanID", spanId),
-                    new KeyValuePair<string, object?>("endpointHandler", context.GetEndpoint()?.DisplayName ?? string.Empty),
+                    new KeyValuePair<string, object?>("api_environment", _environment.EnvironmentName),
+                    new KeyValuePair<string, object?>("request_id", requestUuid),
+                    new KeyValuePair<string, object?>("trace_id", traceId),
+                    new KeyValuePair<string, object?>("span_id", spanId),
+                    new KeyValuePair<string, object?>("endpoint_handler", context.GetEndpoint()?.DisplayName ?? string.Empty),
                     new KeyValuePair<string, object?>("method", method),
                     new KeyValuePair<string, object?>("pathname", pathname),
                     new KeyValuePair<string, object?>("host", host),
-                    new KeyValuePair<string, object?>("remoteAddr", remoteAddr),
-                    new KeyValuePair<string, object?>("serverHostname", Environment.MachineName),
-                    new KeyValuePair<string, object?>("statusCode", statusCode),
-                    new KeyValuePair<string, object?>("latencyMs", latencyMs),
-                    new KeyValuePair<string, object?>("reqBodyBytes", reqBodyBytes),
-                    new KeyValuePair<string, object?>("resBodyBytes", resBodyBytes)
+                    new KeyValuePair<string, object?>("remote_addr", remoteAddr),
+                    new KeyValuePair<string, object?>("server_hostname", Environment.MachineName),
+                    new KeyValuePair<string, object?>("status_code", statusCode),
+                    new KeyValuePair<string, object?>("latency_ms", latencyMs),
+                    new KeyValuePair<string, object?>("req_body_bytes", reqBodyBytes),
+                    new KeyValuePair<string, object?>("res_body_bytes", resBodyBytes)
                 };
 
                 if (caught != null)
@@ -147,8 +147,8 @@ namespace CleanArchitecture.Api.Middleware
 
                 if (captureBodies)
                 {
-                    state.Add(new KeyValuePair<string, object?>("requestBody", requestBody));
-                    state.Add(new KeyValuePair<string, object?>("responseBody", responseBody));
+                    state.Add(new KeyValuePair<string, object?>("request_body", requestBody));
+                    state.Add(new KeyValuePair<string, object?>("response_body", responseBody));
                 }
 
                 var message = FormatMessage(method, pathname, statusCode, latencyMs);

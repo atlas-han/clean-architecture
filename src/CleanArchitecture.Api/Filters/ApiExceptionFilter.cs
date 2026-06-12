@@ -120,7 +120,7 @@ namespace CleanArchitecture.Api.Filters
         {
             _logger.LogError(
                 context.Exception,
-                "Unhandled exception while processing {Path}",
+                "Unhandled exception while processing {path}",
                 context.HttpContext.Request.Path);
 
             var details = new ProblemDetails
