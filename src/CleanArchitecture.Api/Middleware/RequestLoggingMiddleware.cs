@@ -56,6 +56,7 @@ namespace CleanArchitecture.Api.Middleware
                 ? remoteIp + ":" + context.Connection.RemotePort
                 : string.Empty;
             // §14.6: request/response bodies are off by default; captured only on debug paths.
+            // When captured, PII fields inside the bodies are masked before logging (PiiMasker).
             var captureBodies = _logger.IsEnabled(LogLevel.Debug);
             var requestBody = captureBodies ? await ReadRequestBodyAsync(context.Request) : null;
 
@@ -100,7 +101,9 @@ namespace CleanArchitecture.Api.Middleware
                         responseBuffer.Position = 0;
                         using (var reader = new StreamReader(responseBuffer, Encoding.UTF8, detectEncodingFromByteOrderMarks: false, bufferSize: 1024, leaveOpen: true))
                         {
-                            responseBody = Truncate(await reader.ReadToEndAsync(), MaxBodyLength);
+                            // Read in full here; PII masking runs on the whole body and
+                            // truncation is applied afterwards so a cut never defeats masking.
+                            responseBody = await reader.ReadToEndAsync();
                         }
                     }
 
@@ -147,8 +150,8 @@ namespace CleanArchitecture.Api.Middleware
 
                 if (captureBodies)
                 {
-                    state.Add(new KeyValuePair<string, object?>("request_body", requestBody));
-                    state.Add(new KeyValuePair<string, object?>("response_body", responseBody));
+                    state.Add(new KeyValuePair<string, object?>("request_body", Truncate(Logging.PiiMasker.Mask(requestBody), MaxBodyLength)));
+                    state.Add(new KeyValuePair<string, object?>("response_body", Truncate(Logging.PiiMasker.Mask(responseBody), MaxBodyLength)));
                 }
 
                 var message = FormatMessage(method, pathname, statusCode, latencyMs);
@@ -225,7 +228,9 @@ namespace CleanArchitecture.Api.Middleware
             {
                 var body = await reader.ReadToEndAsync();
                 request.Body.Position = 0;
-                return Truncate(body, MaxBodyLength);
+                // Returned untruncated: PII masking runs on the full body, then the caller
+                // truncates the masked result (see InvokeAsync) so a cut never leaks PII.
+                return body;
             }
         }
 

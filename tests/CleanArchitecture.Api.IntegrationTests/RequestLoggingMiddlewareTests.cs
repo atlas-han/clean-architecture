@@ -3,6 +3,7 @@ using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Json;
+using System.Text.Json;
 using System.Threading.Tasks;
 using CleanArchitecture.Api.IntegrationTests.Infrastructure;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -148,6 +149,26 @@ namespace CleanArchitecture.Api.IntegrationTests
 
             var reqBodyBytes = Assert.IsType<long>(log.Values["req_body_bytes"]);
             Assert.True(reqBodyBytes > 0);
+        }
+
+        [Fact]
+        public async Task RequestBody_MasksPiiFields_AtDebugLevel()
+        {
+            var client = CreateClient();
+
+            // customerName is PII; order creation may be rejected (e.g. empty items),
+            // but the request body is logged regardless — that is what we assert on.
+            var payload = new { customerName = "Secret", items = new object[0] };
+            await client.PostAsJsonAsync("/api/orders", payload);
+
+            var log = GetRequestLog();
+            var body = log.Values["request_body"] as string;
+            Assert.False(string.IsNullOrEmpty(body));
+
+            // Raw PII must never appear; the value is partially masked (first char kept).
+            Assert.DoesNotContain("Secret", body!);
+            using var doc = JsonDocument.Parse(body!);
+            Assert.Equal("S*****", doc.RootElement.GetProperty("customerName").GetString());
         }
     }
 
