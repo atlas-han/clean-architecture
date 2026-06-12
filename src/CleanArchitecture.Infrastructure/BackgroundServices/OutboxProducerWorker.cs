@@ -46,6 +46,7 @@ namespace CleanArchitecture.Infrastructure.BackgroundServices
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
+            _logger.LogInformation("OutboxProducerWorker started; polling every {poll_interval}", _pollInterval);
             try
             {
                 using (var timer = new PeriodicTimer(_pollInterval))
@@ -60,11 +61,13 @@ namespace CleanArchitecture.Infrastructure.BackgroundServices
 
                         try
                         {
-                            await ProduceBatchAsync(stoppingToken);
-                        }
-                        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
-                        {
-                            throw;
+                            // Graceful shutdown: once a drain pass has started, let it run to
+                            // completion even if shutdown is requested mid-batch — pass an
+                            // uncancellable token so an in-flight publish is never abandoned
+                            // half-way. New ticks still stop because the next WaitForNextTickAsync
+                            // observes the cancelled stoppingToken; HostOptions.ShutdownTimeout
+                            // bounds how long the host waits for this pass to finish.
+                            await ProduceBatchAsync(CancellationToken.None);
                         }
                         catch (Exception ex)
                         {
@@ -77,8 +80,20 @@ namespace CleanArchitecture.Infrastructure.BackgroundServices
             }
             catch (OperationCanceledException)
             {
-                // Expected on shutdown when the stopping token is cancelled.
+                // Expected on shutdown when the stopping token cancels WaitForNextTickAsync.
             }
+        }
+
+        // Graceful shutdown hook. The host (on SIGTERM/Ctrl+C or a programmatic stop) drives this:
+        // base.StopAsync cancels the stoppingToken — which halts new ticks — and then waits for
+        // ExecuteAsync to return, i.e. for any in-flight drain batch to finish publishing, bounded
+        // by HostOptions.ShutdownTimeout. The log lines bracket the drain so operators can see the
+        // worker shut down cleanly rather than being force-killed mid-batch.
+        public override async Task StopAsync(CancellationToken cancellationToken)
+        {
+            _logger.LogInformation("OutboxProducerWorker stopping: no new ticks; finishing in-flight batch then exiting");
+            await base.StopAsync(cancellationToken);
+            _logger.LogInformation("OutboxProducerWorker stopped");
         }
 
         // One drain pass: publish the oldest pending messages, marking each processed on success or

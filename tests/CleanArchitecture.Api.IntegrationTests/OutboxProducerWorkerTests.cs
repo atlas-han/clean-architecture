@@ -80,6 +80,33 @@ namespace CleanArchitecture.Api.IntegrationTests
             }
         }
 
+        // A publisher whose PublishAsync blocks mid-flight until the test releases it, and which
+        // records whether the token it was handed can be cancelled. Lets a test drive a shutdown
+        // *while a batch is in flight* and prove the publish runs to completion on an uncancellable
+        // token rather than being abandoned.
+        private sealed class GatedPublisher : IEventPublisher
+        {
+            private readonly TaskCompletionSource<bool> _entered =
+                new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            private readonly TaskCompletionSource<bool> _release =
+                new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+            public Task Entered => _entered.Task;
+            public bool ReceivedTokenCanBeCanceled { get; private set; }
+            public List<(string Type, string Key, string Payload)> Published { get; } =
+                new List<(string, string, string)>();
+
+            public void Release() => _release.TrySetResult(true);
+
+            public async Task PublishAsync(string eventType, string key, string payload, CancellationToken cancellationToken)
+            {
+                ReceivedTokenCanBeCanceled = cancellationToken.CanBeCanceled;
+                _entered.TrySetResult(true);
+                await _release.Task;
+                Published.Add((eventType, key, payload));
+            }
+        }
+
         // Captures the formatted message + level of every log call so a test can assert the
         // success log fires (the failure paths already log; only the success path was missing).
         private sealed class RecordingLogger<T> : ILogger<T>
@@ -295,6 +322,66 @@ namespace CleanArchitecture.Api.IntegrationTests
             Assert.Null(done.DeadLetteredOnUtc);
             Assert.Null(done.Error);
             Assert.Single(publisher.Published);
+        }
+
+        [Fact]
+        public async Task Shutdown_LetsInFlightBatchFinish_WithoutCancellingThePublish()
+        {
+            var publisher = new GatedPublisher();
+            using var provider = BuildProvider(publisher, new FixedDateTime());
+            await SeedOrderAsync(provider);
+
+            // Short poll so the first tick — and the gated publish — starts almost immediately.
+            var worker = new OutboxProducerWorker(
+                provider.GetRequiredService<IServiceScopeFactory>(),
+                new FakeMaintenanceState(),
+                NullLogger<OutboxProducerWorker>.Instance,
+                TimeSpan.FromMilliseconds(20),
+                100,
+                100);
+
+            await worker.StartAsync(CancellationToken.None);
+
+            // Block until the worker is mid-publish — the drain batch is now in flight.
+            await publisher.Entered;
+
+            // Request shutdown while the batch is in flight: base.StopAsync cancels the stoppingToken.
+            // A graceful worker must still let the in-flight publish complete rather than abandon it.
+            using var stopCts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            var stopTask = worker.StopAsync(stopCts.Token);
+
+            publisher.Release();
+            await stopTask;
+
+            // The publish ran to completion despite the shutdown, and it was handed an uncancellable
+            // token — proving the in-flight batch is decoupled from the stoppingToken.
+            Assert.False(publisher.ReceivedTokenCanBeCanceled);
+            Assert.Single(publisher.Published);
+            var message = Assert.Single(await ReadOutboxAsync(provider));
+            Assert.NotNull(message.ProcessedOnUtc);
+        }
+
+        [Fact]
+        public async Task StartThenStop_EmitsLifecycleLogs()
+        {
+            using var provider = BuildProvider(new RecordingPublisher(), new FixedDateTime());
+
+            var logger = new RecordingLogger<OutboxProducerWorker>();
+            // Long poll so no drain tick fires during the test — we only assert the lifecycle logs.
+            var worker = new OutboxProducerWorker(
+                provider.GetRequiredService<IServiceScopeFactory>(),
+                new FakeMaintenanceState(),
+                logger,
+                TimeSpan.FromMinutes(5),
+                100,
+                100);
+
+            await worker.StartAsync(CancellationToken.None);
+            await worker.StopAsync(CancellationToken.None);
+
+            Assert.Contains(logger.Entries, e => e.Level == LogLevel.Information && e.Message.Contains("started"));
+            Assert.Contains(logger.Entries, e => e.Level == LogLevel.Information && e.Message.Contains("stopping"));
+            Assert.Contains(logger.Entries, e => e.Level == LogLevel.Information && e.Message.Contains("stopped"));
         }
     }
 }
