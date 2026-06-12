@@ -86,6 +86,9 @@ app.UseHttpsRedirection();
 
 app.UseMiddleware<RequestLoggingMiddleware>();
 
+// Inside the logging middleware so a deadline fast-fail (504) is still captured in the access log.
+app.UseMiddleware<DeadlinePropagationMiddleware>();
+
 app.MapControllers();
 
 app.MapHealthChecks("/health", new HealthCheckOptions

@@ -108,6 +108,43 @@ HTTP request
               → ApplicationDbContext.ApplyAuditFields  ◄ CreatedAt/UpdatedAt 자동
 ```
 
+## 요청 Deadline 전파 (`X-Request-Deadline`)
+
+서비스 간 호출에서 상위 서비스가 이미 타임아웃된 뒤에도 하위 서비스가 계속 일하는 **"좀비 요청"** 을 막기 위해, 절대 시각 기반 deadline 을 헤더로 전파합니다 (API 디자인 가이드 §7.4).
+
+- **헤더**: `X-Request-Deadline: <Unix epoch milliseconds>` — 요청 처리가 끝나야 하는 절대 시각.
+- **담당**: `Api/Middleware/DeadlinePropagationMiddleware.cs` (요청 파이프라인의 `RequestLoggingMiddleware` *안쪽* 에 등록 → fast-fail 한 504 도 access log 에 남음).
+
+동작:
+
+| 헤더 상태 | 남은 예산 | 미들웨어 동작 |
+|-----------|-----------|---------------|
+| 없음 | — | 그대로 통과 (기능은 **opt-in**) |
+| 파싱 불가 (예: 비-숫자) | — | 무시하고 통과 (상위 hop 의 힌트일 뿐 클라이언트 입력이 아니므로 400 으로 거부하지 않음) |
+| 있음 | `< 50ms` | **즉시 `504 Gateway Timeout`** — `DEADLINE_EXCEEDED`. 하위 호출 자체를 시작하지 않음 |
+| 있음 | `≥ 50ms` | `HttpContext.Items["RequestDeadline"]` 에 deadline 보관 후 통과 |
+
+50ms 는 네트워크·핸들러 레이턴시조차 버티기 어려운 최소 마진입니다 (가이드의 10~50ms 범위 중 미들웨어 기준값). 만료(또는 임박) 응답은 `ApiExceptionFilter` 와 동일한 §4.3 `ErrorResponse` 봉투(`ApiResult.Error` 로 생성 — `traceId` / `timestamp` / `error.code` / `error.message`)로 내려갑니다:
+
+```json
+{
+  "traceId": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "timestamp": "2026-05-28T09:30:00.1234567Z",
+  "error": {
+    "code": "DEADLINE_EXCEEDED",
+    "message": "The request deadline (X-Request-Deadline) was exceeded before processing could start. Retry with a fresh deadline."
+  }
+}
+```
+
+```bash
+# 이미 지난 deadline → 504 DEADLINE_EXCEEDED (fast-fail)
+curl -i http://localhost:5000/api/products \
+  -H "X-Request-Deadline: 1000000000000"
+```
+
+> **스코프**: 이 샘플은 가이드 §7.4 의 **진입점 fast-fail (1단계)** 까지 구현합니다. 살아있는 deadline 을 `CancellationTokenSource(remaining)` 로 만들어 DB·다운스트림 호출에 전파하는 2·3단계는, 보관된 `HttpContext.Items["RequestDeadline"]` 를 핸들러가 읽어 쓰는 확장점으로 열어 두었습니다 (모든 컨트롤러를 건드리는 변경이라 샘플에는 미반영).
+
 ## 테스트
 
 xUnit 만 사용 (외부 어설션·모킹 라이브러리 없음). 3개 테스트 프로젝트:
