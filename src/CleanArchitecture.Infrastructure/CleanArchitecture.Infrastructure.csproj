@@ -24,6 +24,10 @@
     <!-- BackgroundService / IHostedService / AddHostedService for the demo batch worker and the
          outbox producer worker. -->
     <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="9.0.0" />
+    <!-- Unified JSON console log format (§14.3): the ConsoleFormatter base type and the
+         AddConsole/AddConsoleFormatter builder extensions behind AddUnifiedConsoleLogging,
+         shared by the Api and Worker hosts. -->
+    <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="9.0.0" />
     <!-- Transactional outbox → Kafka: the real producer used by OutboxProducerWorker when
          Kafka:BootstrapServers is configured (dev/test fall back to a logging publisher). -->
     <PackageReference Include="Confluent.Kafka" Version="2.6.0" />

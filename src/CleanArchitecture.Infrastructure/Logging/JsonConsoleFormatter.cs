@@ -8,10 +8,12 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Logging.Console;
 
-namespace CleanArchitecture.Api.Logging
+namespace CleanArchitecture.Infrastructure.Logging
 {
-    // Emits the unified API server logging spec (API design guide §14.3).
-    // Field names and casing are a fixed contract with the log pipeline (ELK/CloudWatch):
+    // Emits the unified server logging spec (API design guide §14.3). Shared by every host
+    // process (the Api and the outbox Worker) via AddUnifiedConsoleLogging, so both emit
+    // identical structured log lines to the same pipeline (ELK/CloudWatch).
+    // Field names and casing are a fixed contract with that pipeline:
     // state/scope keys are written verbatim (they arrive already in snake_case from the
     // source) — do NOT re-case them here. The keys this class owns are snake_case too.
     public class JsonConsoleFormatter : ConsoleFormatter

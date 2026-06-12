@@ -1,4 +1,5 @@
 using CleanArchitecture.Infrastructure;
+using CleanArchitecture.Infrastructure.Logging;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 
@@ -9,6 +10,10 @@ using Microsoft.Extensions.Hosting;
 // Api deliberately does not call it. Shares the same Infrastructure wiring (DbContext, publisher,
 // maintenance gate) as the Api via AddInfrastructure.
 var builder = Host.CreateApplicationBuilder(args);
+
+// Unified JSON console logging (§14.3), shared with the Api via Infrastructure so both
+// hosts emit identical structured log lines to the same pipeline. Mirrors the Api host.
+builder.Logging.AddUnifiedConsoleLogging();
 
 builder.Services
     .AddInfrastructure(builder.Configuration, builder.Environment)

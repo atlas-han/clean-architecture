@@ -4,10 +4,10 @@ using System.Text.Json;
 using Asp.Versioning;
 using CleanArchitecture.Api.Filters;
 using CleanArchitecture.Api.Http;
-using CleanArchitecture.Api.Logging;
 using CleanArchitecture.Api.Middleware;
 using CleanArchitecture.Application;
 using CleanArchitecture.Infrastructure;
+using CleanArchitecture.Infrastructure.Logging;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.Http;
@@ -16,14 +16,12 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Console;
 using Microsoft.OpenApi.Models;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Logging.ClearProviders();
-builder.Logging.AddConsole(options => options.FormatterName = JsonConsoleFormatter.FormatterName);
-builder.Logging.AddConsoleFormatter<JsonConsoleFormatter, ConsoleFormatterOptions>();
+// Unified JSON console logging (§14.3), shared with the Worker via Infrastructure.
+builder.Logging.AddUnifiedConsoleLogging();
 
 // In Development/Local on macOS the dev cert + HTTP/2 + SslStream combination intermittently
 // fails on GOAWAY flush during connection teardown ("Bad address" from Http2FrameWriter.WriteGoAwayAsync),
