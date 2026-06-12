@@ -75,12 +75,12 @@ if (app.Environment.IsDevelopment() || app.Environment.IsEnvironment("Local"))
     app.UseDeveloperExceptionPage();
 }
 
-app.UseSwagger();
-app.UseSwaggerUI(c =>
-{
-    c.SwaggerEndpoint("/swagger/v1/swagger.json", "CleanArchitecture v1");
-    c.RoutePrefix = string.Empty;
-});
+// app.UseSwagger();
+// app.UseSwaggerUI(c =>
+// {
+//     c.SwaggerEndpoint("/swagger/v1/swagger.json", "CleanArchitecture v1");
+//     c.RoutePrefix = string.Empty;
+// });
 
 app.UseHttpsRedirection();
 
