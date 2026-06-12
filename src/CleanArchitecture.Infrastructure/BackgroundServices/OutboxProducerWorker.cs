@@ -115,6 +115,7 @@ namespace CleanArchitecture.Infrastructure.BackgroundServices
                 List<OutboxMessage> messages = await db.Set<OutboxMessage>()
                     .Where(m => m.ProcessedOnUtc == null && m.DeadLetteredOnUtc == null)
                     .OrderBy(m => m.OccurredOnUtc)
+                    .ThenBy(m => m.Id)
                     .Take(_batchSize)
                     .ToListAsync(cancellationToken);
 
