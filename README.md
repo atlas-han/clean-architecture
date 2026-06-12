@@ -451,6 +451,30 @@ dotnet test tests/CleanArchitecture.Api.IntegrationTests      # API 통합만
 
 `Application.UnitTests` 가 Infrastructure 가 아닌 자체 `TestDbContext` 를 두는 이유: `IApplicationDbContext` 추상화가 진짜 Application 의 경계임을 테스트로도 강제하기 위함. Infrastructure 변경이 Application 테스트를 깨뜨리지 않습니다.
 
+## CI / 시크릿 스캔 (GitHub Actions)
+
+`main` push 와 모든 PR 에서 두 워크플로가 돕니다. 둘 다 실패 시 Slack 봇으로 알림을 보냅니다.
+
+| 워크플로 | 파일 | 하는 일 | 실패 알림 |
+|----------|------|---------|-----------|
+| **Tests** | `.github/workflows/test.yml` | `global.json` 기준 .NET 9 SDK → `dotnet restore/build/test -c Release` (전체 솔루션) | 빌드/테스트 실패 시 Slack |
+| **Gitleaks** | `.github/workflows/gitleaks.yml` | gitleaks `v8.30.1` 로 전체 git 히스토리 시크릿 스캔 (`gitleaks git . --exit-code 1`) | 시크릿 탐지 시 Slack + SARIF 아티팩트 업로드 |
+
+### 필요한 GitHub Secrets
+
+Slack 알림은 **봇 토큰** 방식(`slackapi/slack-github-action@v2`, `chat.postMessage`)입니다. 리포 Settings → Secrets and variables → Actions 에 등록:
+
+| Secret | 값 | 비고 |
+|--------|----|----|
+| `SLACK_BOT_TOKEN` | `xoxb-...` | Slack 앱의 Bot User OAuth Token. `chat:write` 스코프 필요. 봇을 알림 채널에 초대(`/invite @봇`)해 둘 것 |
+| `SLACK_CHANNEL_ID` | `C0XXXXXXX` | 채널 ID (채널명 아님). 채널 우클릭 → "Copy link" 끝의 `C...` 값 |
+
+> 시크릿이 없거나 fork 에서 온 PR(=시크릿 미주입)에서는 Slack 스텝이 실패하지만, 잡은 이미 빌드/테스트(또는 gitleaks) 결과로 red/green 이 확정된 뒤이므로 게이트 판정에는 영향이 없습니다.
+
+### gitleaks false positive
+
+기본 룰셋으로 스캔하며, 현재 리포는 clean 입니다. 의도된 예시 값(예: `.env.example`)이 향후 오탐되면 리포 루트에 `.gitleaksignore`(탐지 핑거프린트 한 줄씩) 또는 `.gitleaks.toml`(커스텀 룰/allowlist) 을 추가하세요.
+
 ## 확장 포인트
 
 - **실제 DB**: `Infrastructure/DependencyInjection.cs` 의 `UseInMemoryDatabase("...")` → `UseSqlServer(...)` / `UseNpgsql(...)`. Migrations 는 Infrastructure 프로젝트에 추가.

@@ -1,0 +1,70 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Build & Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build -c Release --no-restore
+
+      - name: Test
+        run: dotnet test -c Release --no-build --verbosity normal
+
+      # Fires only when a previous step (build or test) failed.
+      # On fork PRs secrets are not injected, so this step is a no-op failure
+      # while the job is already red — see README "CI / Secret scanning".
+      - name: Notify Slack on failure
+        if: failure()
+        uses: slackapi/slack-github-action@v2
+        with:
+          method: chat.postMessage
+          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          payload: |
+            channel: "${{ secrets.SLACK_CHANNEL_ID }}"
+            text: ":x: Tests failed on ${{ github.repository }}@${{ github.ref_name }} (run #${{ github.run_number }})"
+            blocks:
+              - type: header
+                text:
+                  type: plain_text
+                  text: ":x: CI tests failed"
+              - type: section
+                fields:
+                  - type: mrkdwn
+                    text: "*Repository:*\n${{ github.repository }}"
+                  - type: mrkdwn
+                    text: "*Branch / ref:*\n${{ github.ref_name }}"
+                  - type: mrkdwn
+                    text: "*Triggered by:*\n${{ github.actor }}"
+                  - type: mrkdwn
+                    text: "*Event:*\n${{ github.event_name }}"
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: "*Commit:* <${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}|${{ github.sha }}>"
+              - type: actions
+                elements:
+                  - type: button
+                    text:
+                      type: plain_text
+                      text: "View workflow run"
+                    url: "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
