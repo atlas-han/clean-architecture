@@ -72,21 +72,37 @@ dotnet run --project src/CleanArchitecture.Api                    # 실행 (http
 
 > SDK 주의: 루트 `global.json` 이 .NET 9 SDK 를 요구합니다. PATH 의 `dotnet` 이 구버전이면 (예: `/usr/local/share/dotnet` 의 7.x) `DOTNET_ROOT=$HOME/.dotnet $HOME/.dotnet/dotnet ...` 으로 실행하세요.
 
+## 문서화 우선 (Documentation-First) — 코드보다 문서가 먼저
+
+**시스템 개선/신규 기능 등 실질적 작업은 PRD 또는 ADR을 먼저 작성하고 시작합니다.** 목표는 개발 과정의 모든 결정을 영속적으로 남겨 이후 기능 추가·개선에 재활용하는 것. 이는 layer-guard·worktree-isolation과 동급의 운영 규칙입니다. (도입 결정: `docs/adr/0001-adopt-documentation-first-harness.md`)
+
+| 문서 | 답하는 질문 | 트리거 | 위치 / 템플릿 |
+|------|-------------|--------|----------------|
+| **PRD** | 무엇을·누구를 위해·왜 | 신규 기능 / 사용자가 보는 동작 | `docs/prd/NNNN-<slug>.md` / `.claude/templates/prd-template.md` |
+| **ADR** | 어떻게·왜 그 선택 | 기술/구조 결정(라이브러리·패턴·데이터 흐름·계층 배치) | `docs/adr/NNNN-<slug>.md` / `.claude/templates/adr-template.md` |
+
+- 큰 기능은 PRD + ADR을 함께(서로 링크). 어느 쪽인지 애매하면 ADR로 기운다.
+- 스캐폴딩: **`/doc <prd|adr> <제목>`** — 다음 번호로 템플릿에서 생성 + 인덱스(`docs/{prd,adr}/README.md`) 갱신. 판단·절차는 `.claude/skills/document-first/SKILL.md`.
+- **강제**: `.claude/hooks/doc-first-guard.sh` (PreToolUse) 가 **worktree 안** `src/`·`tests/` 의 `.cs`/`.csproj` 편집을, 해당 worktree에 `docs/prd/**` 또는 `docs/adr/**` 변경(커밋/uncommitted)이 없으면 차단합니다. 문서는 **코드와 같은 worktree** 안에 둬야 차단이 풀립니다. 이 가드를 우회하지 마세요 — 막히면 "문서를 아직 안 썼다"는 신호입니다.
+- 면제: `.claude/**`·모든 `*.md`·문서 자체, 그리고 main 체크아웃의 사소한 in-place 수정(worktree-isolation-guard 관할).
+- **commit 직전 README 검수**: 변경이 API 엔드포인트·`appsettings.json` 키·사용자가 보는 동작·디렉터리 트리를 건드리면 `README.md`를 같은 커밋에서 갱신. 아니면 "README 변경 불필요" 명시. (merge 사이클 5단계에 포함)
+
 ## 작업 워크플로 (코드 수정 = worktree 격리 필수)
 
 **모든 코드 수정 작업은 git worktree 안에서 시작합니다.** 이는 협상 가능한 가이드라인이 아니라 하네스의 운영 규칙입니다.
 
 ```
-[plan] → EnterWorktree → [implement (가능하면 team 병렬)] → build + test → 통과시 rebase + fast-forward 머지(선형 히스토리) → 실패시 worktree 보존하여 디버그
+[plan] → EnterWorktree → [PRD/ADR 문서화] → [implement (가능하면 team 병렬)] → build + test → README 검수 → 통과시 rebase + fast-forward 머지(선형 히스토리) → 실패시 worktree 보존하여 디버그
 ```
 
 1. **계획 (in-place)** — 어떤 계층이 닿는지, 무엇이 병렬 가능한지 식별. 읽기/탐색만 필요한 단계에서는 worktree 를 만들지 않습니다.
 2. **격리** — 코드/csproj 수정이 시작되기 직전에 `EnterWorktree` 호출 (이름: `feat-<짧은-주제>`). 이후 모든 편집은 worktree 안에서.
+2a. **문서화 우선 (코드 전)** — worktree 안에서 PRD 또는 ADR을 먼저 작성 (`/doc <prd|adr> <제목>`). doc-first-guard가 문서 없으면 `src/`·`tests/` 편집을 차단. PRD/ADR의 인수기준이 곧 성공 기준. (위 "문서화 우선" 섹션 참조)
 3. **병렬 구현** — Plan 에서 식별한 독립 단위가 둘 이상이면 `TeamCreate` 로 팀을 만들고, 단위마다 별도 Agent 를 spawn 해서 동시 진행. 의존성 있는 단위는 `TaskUpdate addBlockedBy` 로 순서를 강제. 단일 단위면 팀 없이 직접 수행.
 4. **검증** — `dotnet build && dotnet test`. PostToolUse 훅이 포맷팅, PreToolUse 훅이 Domain/Application 가드를 자동 수행합니다.
 
-> **강제**: `.claude/hooks/worktree-isolation-guard.sh` (PreToolUse) 가 `src/`·`tests/` 의 코드 파일(`.cs`/`.csproj`) 및 `.sln` 을 worktree 밖(메인 체크아웃)에서 편집하려는 시도를 차단합니다. 코드 편집은 반드시 `EnterWorktree` 후 worktree 안에서. `.claude/` 설정·문서(`.md`) 편집은 면제되어 in-place 로 가능합니다.
-5. **자동 merge & cleanup (선형 히스토리)** — 빌드 + 테스트 모두 통과시 worktree 안에서 의미 있는 커밋(들) 작성 → 같은 worktree 에서 `git rebase main` 으로 베이스 위에 선형화 → `ExitWorktree(action: "keep")` 로 main 체크아웃에 복귀 → `git merge --ff-only <branch>` → `git worktree remove .claude/worktrees/<name>` → `git branch -d <branch>`. **반드시 fast-forward 머지** — `--no-ff` 금지(머지 커밋이 히스토리에 끼면 안 됨). rebase 도중 충돌이 나면 `git rebase --abort` 후 worktree 를 그대로 보존하고 사용자에게 보고. 실패시 worktree 와 브랜치를 *그대로* 두고 사용자에게 실패 요약 보고. 절대 worktree 를 강제 삭제하지 마세요.
+> **강제**: `.claude/hooks/worktree-isolation-guard.sh` (PreToolUse) 가 `src/`·`tests/` 의 코드 파일(`.cs`/`.csproj`) 및 `.sln` 을 worktree 밖(메인 체크아웃)에서 편집하려는 시도를 차단합니다. 추가로 `.claude/hooks/doc-first-guard.sh` (PreToolUse) 가 worktree 안 코드 편집을 PRD/ADR 없이는 차단합니다 (위 "문서화 우선" 참조). 코드 편집은 반드시 `EnterWorktree` 후 worktree 안에서, 문서를 먼저 쓰고. `.claude/` 설정·문서(`.md`) 편집은 면제되어 in-place 로 가능합니다.
+5. **자동 merge & cleanup (선형 히스토리)** — 빌드 + 테스트 통과 후 **커밋 직전 README 검수**(엔드포인트·설정·동작·디렉터리 트리 변경 시 갱신, 아니면 "README 변경 불필요" 명시)하고 PRD/ADR 상태 갱신 → worktree 안에서 의미 있는 커밋(들) 작성 → 같은 worktree 에서 `git rebase main` 으로 베이스 위에 선형화 → `ExitWorktree(action: "keep")` 로 main 체크아웃에 복귀 → `git merge --ff-only <branch>` → `git worktree remove .claude/worktrees/<name>` → `git branch -d <branch>`. **반드시 fast-forward 머지** — `--no-ff` 금지(머지 커밋이 히스토리에 끼면 안 됨). rebase 도중 충돌이 나면 `git rebase --abort` 후 worktree 를 그대로 보존하고 사용자에게 보고. 실패시 worktree 와 브랜치를 *그대로* 두고 사용자에게 실패 요약 보고. 절대 worktree 를 강제 삭제하지 마세요.
 6. **계층 검증** — Domain 이나 csproj 를 건드렸다면 머지 *전* `/check-arch` 로 의존 그래프 재확인.
 
 이 사이클 전체는 `work-orchestrator` 에이전트가 단일 패스로 오케스트레이션합니다(Claude 자율 진행 시). 사용자가 명시적으로 `/harness <목표>` 를 입력하면 같은 사이클을 자율 루프로(첫 GREEN 에서 종료, 실패 시 최대 3 회) 돌립니다. CQRS 슬라이스 추가는 `/add-cqrs` 가 자체적으로 worktree 사이클을 포함합니다.
@@ -124,13 +140,18 @@ dotnet run --project src/CleanArchitecture.Api                    # 실행 (http
 - `work-orchestrator` — worktree 사이클 + 병렬 팀 조립 담당 (다단계 작업의 단일 패스 엔진; `/harness` 루프가 이 엔진을 반복 호출)
 
 **Skills** (`.claude/skills/`)
+- `document-first` — PRD vs ADR 판단 + 작업 시작 시 문서화 절차 + README 검수 규칙
 - `add-cqrs-feature` — CQRS 슬라이스 추가 절차
 - `verify-architecture` — 계층 의존 검증 절차
 - `dotnet-debug` — 흔한 .NET 문제 진단 레시피
-- `worktree-workflow` — worktree → verify → merge 사이클 표준 절차
+- `worktree-workflow` — worktree → verify → merge 사이클 표준 절차 (Phase 0 문서화 포함)
 - `harness-loop` — Plan → Generate → Evaluate 자율 루프 (최대 3 회 반복, 실패시 worktree 보존)
 
+**Templates** (`.claude/templates/`)
+- `prd-template.md` / `adr-template.md` — 하네스가 관리하는 PRD/ADR 표준 템플릿. `/doc` 가 이 템플릿에서 새 문서를 만든다.
+
 **Commands** (`.claude/commands/`)
+- `/doc <prd|adr> <제목>` — 문서화 우선 진입점. 다음 번호로 PRD/ADR을 템플릿에서 스캐폴딩 + 인덱스 갱신.
 - `/harness <목표>` — 다단계 작업의 단일 오케스트레이션 진입점. Plan → Generate → Evaluate 사이클을 돌리며 **첫 GREEN 에서 종료**(= 단순 목표는 단일 패스), 실패 시에만 피드백 기반으로 최대 3 회 재시도. 자율 호출 금지 — 사용자가 직접 `/harness` 를 입력했을 때만 실행. (Claude 자율 진행이 필요하면 `/harness` 대신 `work-orchestrator` 에이전트를 직접 사용)
 - `/add-cqrs` — CQRS 슬라이스 추가 (worktree 포함)
 - `/check-arch` — 계층 의존 즉시 검증

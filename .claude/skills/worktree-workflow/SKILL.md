@@ -9,15 +9,22 @@ The project's standing rule: **any code modification is isolated in a git worktr
 
 ## When the rule applies
 
-| Action | Worktree required? |
-|--------|--------------------|
-| Reading / searching / explaining code | No |
-| Answering questions | No |
-| Editing `.cs`, `.csproj`, `appsettings.json`, etc. | **Yes** |
-| Editing `.claude/**` (the harness itself) | Optional — usually no (low risk + small) |
-| One-line typo fix the user explicitly said "just do it in place" | No |
+| Action | Worktree required? | 문서(PRD/ADR) 먼저? |
+|--------|--------------------|---------------------|
+| Reading / searching / explaining code | No | No |
+| Answering questions | No | No |
+| Editing `.cs`, `.csproj`, `appsettings.json`, etc. (실질적 기능/개선) | **Yes** | **Yes** — doc-first-guard가 강제 |
+| Editing `.claude/**` (the harness itself) | Optional — usually no (low risk + small) | No |
+| One-line typo fix the user explicitly said "just do it in place" | No | No |
 
-## The 6 phases
+> 문서화 우선: worktree 안 `src/`·`tests/` 코드 편집은 `docs/prd/**` 또는 `docs/adr/**` 변경이 있어야 풀린다 (`.claude/hooks/doc-first-guard.sh`). 판단·절차는 `.claude/skills/document-first/SKILL.md`.
+
+## The phases (0 Document → 6 Failure)
+
+0. **Document (문서화 우선, before code)**
+   - 신규 기능(무엇/누구) → PRD, 기술/구조 결정(어떻게/왜) → ADR, 큰 기능은 둘 다. 애매하면 ADR. `/doc <prd|adr> <제목>` 으로 다음 번호 스캐폴딩.
+   - 문서는 **코드와 같은 worktree 안**에 둔다 → Isolate(2) 직후 생성. doc-first-guard가 문서 없으면 코드 편집을 막는다.
+   - 실제 섹션을 채우고 `docs/{prd,adr}/README.md` 인덱스에 행 추가. PRD/ADR의 인수기준이 곧 성공 기준.
 
 1. **Plan** (in current cwd, no edits)
    - Decompose the goal into the smallest independent units.
@@ -43,6 +50,7 @@ The project's standing rule: **any code modification is isolated in a git worktr
 5. **Review + Merge (linear / fast-forward only)** (only on green)
    - Delegate to `@dotnet-code-reviewer` (`git diff main...HEAD` is the default scope).
    - Address `REQUEST_CHANGES` findings in-place; re-verify; re-review. Max 2 cycles.
+   - **README 검수 (커밋 직전)**: diff가 API 엔드포인트·`appsettings.json` 키·사용자가 보는 동작·디렉터리 트리를 건드리면 `README.md` 갱신. 아니면 "README 변경 불필요" 명시. Phase 0 PRD/ADR이 최종 형태와 맞는지 확인하고 상태 갱신.
    - Commit (`git add -A && git commit -m "..."`).
    - **Linearize on top of base** (still inside the worktree):
      ```bash

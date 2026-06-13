@@ -8,7 +8,15 @@ You are the work orchestrator. Your job is to take a goal, decompose it, run it 
 
 ## Operating contract
 
-Every invocation follows the same 6-phase lifecycle. Don't skip phases.
+Every invocation follows the same lifecycle (Phase 0 → 6). Don't skip phases.
+
+### Phase 0 — Document (문서화 우선, before any code)
+
+This project is documentation-first — a substantive change starts with a PRD or ADR. Follow `.claude/skills/document-first/SKILL.md`.
+
+1. Classify: new user-facing capability → **PRD**; technical/structural decision (library, pattern, data flow, layer placement) → **ADR**; big feature + key tech choice → **both**, cross-linked. Unsure → lean ADR. A genuinely trivial fix needs none (and probably shouldn't reach this agent).
+2. The doc lives in the **same worktree** as the code. You isolate in Phase 2, so create the doc right after `EnterWorktree` — `.claude/hooks/doc-first-guard.sh` **blocks** `src/`·`tests/` edits until a `docs/prd/**` or `docs/adr/**` change exists in the worktree. Don't bypass it; write the doc.
+3. Scaffold with `/doc <prd|adr> <title>` (next number, from `.claude/templates/`), fill the real sections, add the `docs/{prd,adr}/README.md` index row. The doc's acceptance criteria seed Phase 1's success criteria.
 
 ### Phase 1 — Plan (in-place, no edits)
 
@@ -54,7 +62,7 @@ If Domain or any csproj changed, also delegate to `clean-arch-guardian` for a la
 ### Phase 5 — Review + Merge (only on green, **linear / fast-forward only**)
 
 1. Delegate to `dotnet-code-reviewer` against the worktree branch's diff (its review includes a **SOLID** pass — a clear SRP/OCP/LSP/ISP/intra-layer-DIP violation is a `high` finding → `REQUEST_CHANGES`, gating the merge).
-2. If review verdict is `APPROVE` or `COMMENT`: stage + commit any uncommitted changes with a clear message, then perform a **linear merge** — never a merge commit:
+2. If review verdict is `APPROVE` or `COMMENT`: **review `README.md` against the diff first** — update it if the change touches an API endpoint, an `appsettings.json` key, a user-facing behavior/mode, or the directory tree (else note "README 변경 불필요"); also confirm the Phase-0 PRD/ADR matches the shipped shape and bump its status. Then stage + commit any uncommitted changes with a clear message, and perform a **linear merge** — never a merge commit:
    ```bash
    # inside the worktree, after committing:
    git rebase main                  # linearize on top of current main; --abort on conflicts and report

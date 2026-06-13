@@ -15,13 +15,15 @@ Then run the standard worktree cycle:
 
 2. **EnterWorktree** with name `feat-<action>-<feature>` (lowercase, hyphen-separated).
 
+2a. **Document first (문서화 우선)** — a slice is a new user-facing capability → write a **PRD** (`/doc prd <action> <feature>`); if it also settles a notable technical/structural choice, add an **ADR** too. Create it **inside this worktree** and fill the real sections — `.claude/hooks/doc-first-guard.sh` blocks the slice's `src/`·`tests/` edits until a `docs/prd/**` or `docs/adr/**` change exists here. The PRD's acceptance criteria are your test targets. See `.claude/skills/document-first/SKILL.md`.
+
 3. **Implement** by delegating to `@cqrs-feature-scaffolder`. The scaffolder follows the templates in `.claude/skills/add-cqrs-feature/SKILL.md`. If the user asked for multiple slices in one call (e.g. "Create and Update for Order"), create a team and spawn one scaffolder per slice — but serialize any shared-file edits (the controller).
 
 4. **Verify** — `dotnet build && dotnet test`. If Domain changed, also `@clean-arch-guardian`.
 
 5. **Review** via `@dotnet-code-reviewer`. Address findings (max 2 cycles).
 
-6. **Commit + linear merge** on green — the repo invariant is a straight-line `git log` (no merge commits):
+6. **README 검수 + Commit + linear merge** on green — the repo invariant is a straight-line `git log` (no merge commits). 커밋 직전 `README.md` 검수: 새 엔드포인트(보통 POST→201 등)·설정·동작이 추가됐으면 README의 API 엔드포인트/디렉터리 트리 섹션 갱신, 아니면 "README 변경 불필요" 명시. PRD/ADR 상태도 갱신.
    ```bash
    git commit -m "feat(<feature>): <action> via CQRS slice"
    git rebase main                       # linearize; abort on conflict and report

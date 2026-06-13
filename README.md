@@ -481,6 +481,15 @@ Slack 알림은 **봇 토큰** 방식(`slackapi/slack-github-action@v2`, `chat.p
 - **인증/인가**: `Api/Program.cs` 에 `AddAuthentication`/`UseAuthentication`/`UseAuthorization` 추가. 핸들러가 사용자 정보를 필요로 하면 `Application` 에 `ICurrentUser` 같은 인터페이스 정의 → `Api` 또는 `Infrastructure` 가 구현.
 - **Domain Events**: `BaseEntity` 에 도메인 이벤트 컬렉션 추가 → `DbContext.SaveChangesAsync` 에서 `ISender` 와 유사한 자체 `IPublisher` 를 추가해 디스패치.
 
+## 문서 (PRD / ADR) — 문서화 우선
+
+시스템 개선·신규 기능은 **코드보다 문서가 먼저**입니다 (도입 결정: [`docs/adr/0001`](docs/adr/0001-adopt-documentation-first-harness.md)).
+
+- **PRD** (`docs/prd/`) — *무엇을·누구를 위해*. 신규 기능 요구사항.
+- **ADR** (`docs/adr/`) — *어떻게·왜 그 선택*. 기술/구조 결정 기록.
+- 새 문서: `/doc <prd|adr> <제목>` (템플릿: `.claude/templates/`). 판단·절차는 `.claude/skills/document-first/SKILL.md`.
+- `.claude/hooks/doc-first-guard.sh` 가 worktree 안 `src/`·`tests/` 코드 편집을 PRD/ADR 없이는 차단합니다.
+
 ## 디렉터리 트리
 
 ```
@@ -492,7 +501,10 @@ clean-architecture/
 ├── db/                               ◄ V1__init_schema.sql, flyway.conf
 ├── scripts/                          ◄ db-migrate.sh / db-validate.sh / db-info.sh
 ├── postman/                          ◄ collection + environment json
-├── docs/order-feature-spec.md
+├── docs/
+│   ├── adr/                          ◄ Architecture Decision Records (NNNN-*.md + README 인덱스)
+│   ├── prd/                          ◄ Product Requirements Documents (NNNN-*.md + README 인덱스)
+│   └── order-feature-spec.md  ·  kafka-event-publishing.md
 │
 ├── src/
 │   ├── CleanArchitecture.Domain/

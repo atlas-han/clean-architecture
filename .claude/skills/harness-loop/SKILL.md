@@ -23,7 +23,15 @@ Multi-step but linear work where you can plan once and execute is *also* served 
 
 ## The cycle
 
-Each iteration is **Plan → Generate → Evaluate**. The cycle exits either via GREEN (merge + success) or by exhausting the iteration budget (max 3) or stalling (two identical failures in a row).
+Each iteration is **Plan → Generate → Evaluate**, preceded once by **Document** (문서화 우선). The cycle exits either via GREEN (merge + success) or by exhausting the iteration budget (max 3) or stalling (two identical failures in a row).
+
+### Document (문서화 우선, iteration 1 only, before code)
+
+Substantive work starts with a PRD or ADR — see `.claude/skills/document-first/SKILL.md`.
+- New user-facing capability → **PRD** (`/doc prd <title>`); technical/structural decision → **ADR** (`/doc adr <title>`); big feature + key tech choice → both, cross-linked. Unsure → lean ADR.
+- The doc must live in the **same worktree** as the code, so create it after `EnterWorktree` (the Generate worktree) — `.claude/hooks/doc-first-guard.sh` blocks `src/`·`tests/` edits until a `docs/prd/**` or `docs/adr/**` change exists in the worktree. Don't bypass it.
+- Fill the real sections + add the `docs/{prd,adr}/README.md` index row. The doc's acceptance criteria become the Plan's success criteria.
+- Iterations 2–3 don't re-document; if the approach shifts materially, append a note (ADR) or update the PRD.
 
 ### Plan (no edits)
 
@@ -61,7 +69,7 @@ Compute the verdict:
 | fail | — | — | — | RED |
 | ok | ok | FAIL | — | RED |
 
-On GREEN: commit with a clear message, then **linear-merge** the worktree (see `worktree-workflow/SKILL.md` "Review + Merge"):
+On GREEN, **before committing**: review `README.md` against the diff — update it if the change touches an API endpoint, an `appsettings.json` key, a user-facing behavior, or the directory tree; otherwise state "README 변경 불필요". Confirm the Phase-0 PRD/ADR matches the shipped shape and bump its status. Then commit with a clear message and **linear-merge** the worktree (see `worktree-workflow/SKILL.md` "Review + Merge"):
 
 ```bash
 # inside the worktree, after committing:

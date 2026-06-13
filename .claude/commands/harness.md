@@ -13,6 +13,17 @@ Cost scales with iterations, not with invocation: simple goals finish cheap in o
 
 Follow `.claude/skills/harness-loop/SKILL.md`. Summary of the cycle:
 
+## Phase 0 — Document (문서화 우선, before any code)
+
+This project is **documentation-first**: a substantive change starts with a PRD or ADR, not code. Follow `.claude/skills/document-first/SKILL.md`.
+
+1. Classify the goal: new user-facing capability → **PRD**; technical/structural decision (library, pattern, data flow, layer placement) → **ADR**; a big feature with a key technical choice → **both**, cross-linked. When unsure, lean ADR. A genuinely trivial fix/bugfix needs no doc — but then it's probably not a `/harness` goal.
+2. Scaffold it: `/doc prd <title>` or `/doc adr <title>` (next number, from `.claude/templates/`). The doc must live in the **same worktree** as the code — so if you'll code this iteration, this is the moment to `EnterWorktree` (Phase 2's worktree), then create the doc inside it.
+3. Fill the real sections (context/problem, decision drivers, options+decision for ADR / goals+acceptance-criteria for PRD) and add the index row in `docs/{prd,adr}/README.md`.
+4. The PRD/ADR's acceptance criteria feed Phase 1's success criteria — write them so they're checkable in Evaluate.
+
+`.claude/hooks/doc-first-guard.sh` enforces this: `src/`·`tests/` code edits inside the worktree are **blocked** until a `docs/prd/**` or `docs/adr/**` change exists. Don't bypass it — write the doc.
+
 ## Phase 1 — Plan (in-place, no edits)
 
 1. Restate the goal in your own words.
@@ -57,6 +68,8 @@ Then layered checks (only if the corresponding layer was touched):
 | ok | ok | FAIL | — | **RED** → loop back to Plan with arch violations |
 
 On RED/YELLOW, capture the failure summary (one bullet per concrete failure, with file:line where possible) — this becomes the input to the next Plan phase.
+
+**README check (before committing, on GREEN):** review `README.md` against the diff. If the change adds/alters an API endpoint, an `appsettings.json` key, a user-facing behavior/mode, or the directory tree, update README in the same commit. If nothing user-facing changed, state "README 변경 불필요". (Also confirm the PRD/ADR from Phase 0 reflects the final shape — update its status to `Accepted`/`Approved`.) See `.claude/skills/document-first/SKILL.md` → README 검수.
 
 **Linear-merge sequence (only on GREEN):** the repo invariant is a straight-line `git log` — no merge commits. After committing, run:
 
