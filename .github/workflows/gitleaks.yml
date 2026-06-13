@@ -33,17 +33,92 @@ jobs:
           gitleaks version
 
       # Exits 1 when secrets are found (default), which fails the job and the
-      # subsequent failure-gated steps run.
+      # subsequent failure-gated steps run. `--redact` keeps the raw secret out
+      # of both the logs and the JSON report, so the findings we forward to
+      # Slack below show metadata + a redacted match, never the secret itself.
       - name: Scan for secrets
-        run: gitleaks git . --redact --no-banner --exit-code 1 --report-format sarif --report-path gitleaks.sarif
+        run: gitleaks git . --redact --no-banner --exit-code 1 --report-format json --report-path gitleaks.json
 
-      - name: Upload SARIF report
+      - name: Upload findings report
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: gitleaks-sarif
-          path: gitleaks.sarif
+          name: gitleaks-report
+          path: gitleaks.json
           if-no-files-found: ignore
+
+      # Turn the JSON report into a ready-to-post Slack payload. jq builds the
+      # JSON so any finding text (paths, rule ids, redacted matches) is escaped
+      # correctly regardless of its contents.
+      - name: Build Slack payload
+        if: failure()
+        env:
+          REPO: ${{ github.repository }}
+          REF: ${{ github.ref_name }}
+          ACTOR: ${{ github.actor }}
+          EVENT: ${{ github.event_name }}
+          SHA: ${{ github.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          COMMIT_URL: ${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}
+          CHANNEL: ${{ secrets.SLACK_CHANNEL_ID }}
+        run: |
+          if [ -s gitleaks.json ] && [ "$(jq 'type' gitleaks.json)" = '"array"' ]; then
+            COUNT=$(jq 'length' gitleaks.json)
+            # One bullet per finding (cap at 20 so we stay under Slack's 3000
+            # char/section limit): rule, file:line, short commit, author, and
+            # the already-redacted match.
+            FINDINGS=$(jq -r '
+              def trunc(n): if (. | length) > n then (.[0:n] + "…") else . end;
+              [ .[]
+                | "• *\(.RuleID)* — `\(.File)`:\(.StartLine)  ·  commit `\(.Commit[0:7])`  ·  \(.Author)\n"
+                  + "    ↳ `\((.Match // "") | gsub("`"; "ˋ") | trunc(120))`"
+              ] | (.[0:20] | join("\n"))' gitleaks.json)
+            if [ "$COUNT" -gt 20 ]; then
+              FINDINGS="${FINDINGS}"$'\n'"… and $((COUNT - 20)) more — see the *gitleaks-report* artifact."
+            fi
+          else
+            COUNT="unknown"
+            FINDINGS="_No machine-readable report was produced — check the run logs._"
+          fi
+
+          jq -n \
+            --arg repo "$REPO" \
+            --arg ref "$REF" \
+            --arg actor "$ACTOR" \
+            --arg event "$EVENT" \
+            --arg sha "$SHA" \
+            --arg runurl "$RUN_URL" \
+            --arg commiturl "$COMMIT_URL" \
+            --arg channel "$CHANNEL" \
+            --arg count "$COUNT" \
+            --arg findings "$FINDINGS" \
+            '{
+              channel: $channel,
+              text: (":rotating_light: gitleaks flagged \($count) potential secret(s) on \($repo)@\($ref) — secrets redacted"),
+              blocks: [
+                { type: "header",
+                  text: { type: "plain_text", text: ":rotating_light: Potential secret leak detected" } },
+                { type: "section",
+                  fields: [
+                    { type: "mrkdwn", text: ("*Repository:*\n" + $repo) },
+                    { type: "mrkdwn", text: ("*Branch / ref:*\n" + $ref) },
+                    { type: "mrkdwn", text: ("*Triggered by:*\n" + $actor) },
+                    { type: "mrkdwn", text: ("*Findings:*\n" + $count) }
+                  ] },
+                { type: "section",
+                  text: { type: "mrkdwn",
+                          text: (("*Detected (secrets redacted):*\n" + $findings)[0:2900]) } },
+                { type: "section",
+                  text: { type: "mrkdwn",
+                          text: ("Commit: <" + $commiturl + "|" + $sha + ">  ·  full report: download the *gitleaks-report* artifact") } },
+                { type: "actions",
+                  elements: [
+                    { type: "button",
+                      text: { type: "plain_text", text: "View workflow run" },
+                      url: $runurl }
+                  ] }
+              ]
+            }' > slack-payload.json
 
       # On fork PRs secrets are not injected, so this step is a no-op failure
       # while the job is already red — see README "CI / Secret scanning".
@@ -53,32 +128,4 @@ jobs:
         with:
           method: chat.postMessage
           token: ${{ secrets.SLACK_BOT_TOKEN }}
-          payload: |
-            channel: "${{ secrets.SLACK_CHANNEL_ID }}"
-            text: ":rotating_light: gitleaks flagged potential secrets on ${{ github.repository }}@${{ github.ref_name }} (run #${{ github.run_number }})"
-            blocks:
-              - type: header
-                text:
-                  type: plain_text
-                  text: ":rotating_light: Potential secret leak detected"
-              - type: section
-                fields:
-                  - type: mrkdwn
-                    text: "*Repository:*\n${{ github.repository }}"
-                  - type: mrkdwn
-                    text: "*Branch / ref:*\n${{ github.ref_name }}"
-                  - type: mrkdwn
-                    text: "*Triggered by:*\n${{ github.actor }}"
-                  - type: mrkdwn
-                    text: "*Event:*\n${{ github.event_name }}"
-              - type: section
-                text:
-                  type: mrkdwn
-                  text: "Download the *gitleaks-sarif* artifact from the run for findings. Commit: <${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}|${{ github.sha }}>"
-              - type: actions
-                elements:
-                  - type: button
-                    text:
-                      type: plain_text
-                      text: "View workflow run"
-                    url: "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          payload-file-path: slack-payload.json

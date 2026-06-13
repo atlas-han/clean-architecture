@@ -458,7 +458,7 @@ dotnet test tests/CleanArchitecture.Api.IntegrationTests      # API 통합만
 | 워크플로 | 파일 | 하는 일 | 실패 알림 |
 |----------|------|---------|-----------|
 | **Tests** | `.github/workflows/test.yml` | `global.json` 기준 .NET 9 SDK → `dotnet restore/build/test -c Release` (전체 솔루션) | 빌드/테스트 실패 시 Slack |
-| **Gitleaks** | `.github/workflows/gitleaks.yml` | gitleaks `v8.30.1` 로 전체 git 히스토리 시크릿 스캔 (`gitleaks git . --exit-code 1`) | 시크릿 탐지 시 Slack + SARIF 아티팩트 업로드 |
+| **Gitleaks** | `.github/workflows/gitleaks.yml` | gitleaks `v8.30.1` 로 전체 git 히스토리 시크릿 스캔 (`gitleaks git . --exit-code 1`) | 시크릿 탐지 시 Slack(탐지 내역 = 룰·파일·라인·커밋·**리댁트된** match 포함) + JSON 리포트 아티팩트 업로드 |
 
 ### 필요한 GitHub Secrets
 
