@@ -37,7 +37,7 @@ jobs:
       # of both the logs and the JSON report, so the findings we forward to
       # Slack below show metadata + a redacted match, never the secret itself.
       - name: Scan for secrets
-        run: gitleaks git . --redact --no-banner --exit-code 1 --report-format json --report-path gitleaks.json
+        run: gitleaks git . --config .gitleaks.toml --redact --no-banner --exit-code 1 --report-format json --report-path gitleaks.json
 
       - name: Upload findings report
         if: failure()

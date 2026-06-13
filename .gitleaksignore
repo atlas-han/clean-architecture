@@ -1,8 +1,0 @@
-# gitleaks false positives (fingerprint = commit:file:rule:startline)
-#
-# confluent-access-token matched the plain-English code comment
-# "a real Confluent producer when Kafka:BootstrapServers is set" in
-# DependencyInjection.cs — no real credential. Flagged in historical commit
-# 403a3a6; the wording was later reworded, but `gitleaks git .` scans full
-# history so the old commit keeps tripping the rule.
-403a3a63551998215f53b2cabdfc6fc62d41d5ef:src/CleanArchitecture.Infrastructure/DependencyInjection.cs:confluent-access-token:141

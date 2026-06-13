@@ -1,0 +1,24 @@
+# gitleaks configuration — extends the bundled default ruleset and adds a
+# content-based allowlist for a known false positive.
+#
+# Auto-loaded by `gitleaks git .` from the repo root (config precedence:
+# --config flag > GITLEAKS_CONFIG > .gitleaks.toml in target path > default).
+
+[extend]
+useDefault = true
+
+# False positive: the plain-English code comment
+#   "a real Confluent producer when Kafka:BootstrapServers is set"
+# trips the `confluent-access-token` rule — the keyword "Confluent" appears
+# within 20 chars of "Kafka:", and "BootstrapServers" happens to be exactly a
+# 16-char [a-z0-9] token, which the rule captures as the "secret". No real
+# credential. Unlike a per-commit .gitleaksignore fingerprint, this allowlist
+# is content-based, so it covers every commit in history that contains the
+# phrase (DependencyInjection.cs and any doc/comment that quotes it).
+[[allowlists]]
+description = "Plain-English comment 'Confluent producer when Kafka:BootstrapServers' (BootstrapServers is a 16-char token) — not a credential"
+targetRules = ["confluent-access-token"]
+regexTarget = "match"
+regexes = [
+  '''Confluent producer when Kafka:BootstrapServers''',
+]
