@@ -96,10 +96,10 @@ namespace CleanArchitecture.Infrastructure.BackgroundServices
             _logger.LogInformation("OutboxProducerWorker stopped");
         }
 
-        // One drain pass: publish the oldest pending messages, marking each processed on success or
-        // recording the error on failure (left unprocessed → retried next tick, so delivery is
-        // at-least-once). A row that keeps failing is dead-lettered once its attempt count reaches
-        // _maxRetries, so a poison message can't be retried forever (see the catch block). Public and
+        // One drain pass: publish the oldest pending messages in a single pipelined batch, then mark
+        // each processed on success or record the error on failure (left unprocessed → retried next
+        // tick, so delivery is at-least-once). A row that keeps failing is dead-lettered once its
+        // attempt count reaches _maxRetries, so a poison message can't be retried forever. Public and
         // scope-managed so tests can drive it deterministically without spinning the timer loop.
         // Returns the number of messages published this pass.
         public async Task<int> ProduceBatchAsync(CancellationToken cancellationToken)
@@ -122,18 +122,31 @@ namespace CleanArchitecture.Infrastructure.BackgroundServices
                 if (messages.Count == 0)
                     return 0;
 
-                var published = 0;
+                // Hand the whole batch to the publisher in one pipelined call instead of awaiting a
+                // broker round-trip per message — that is what lets the drain keep up at thousands of
+                // events/sec. Envelopes are built in drain order (OccurredOnUtc, Id) and the results
+                // come back in the same order, so results[i] is the outcome for messages[i]; preserving
+                // that order is also what keeps per-aggregate event order intact on the Kafka side.
+                var envelopes = new List<EventEnvelope>(messages.Count);
                 foreach (OutboxMessage message in messages)
                 {
-                    try
-                    {
-                        await publisher.PublishAsync(
-                            message.Type,
-                            message.AggregateId.ToString(),
-                            message.Content,
-                            message.Id.ToString(),
-                            cancellationToken);
+                    envelopes.Add(new EventEnvelope(
+                        message.Type,
+                        message.AggregateId.ToString(),
+                        message.Content,
+                        message.Id.ToString()));
+                }
 
+                IReadOnlyList<PublishResult> results = await publisher.PublishBatchAsync(envelopes, cancellationToken);
+
+                var published = 0;
+                for (var i = 0; i < messages.Count; i++)
+                {
+                    OutboxMessage message = messages[i];
+                    PublishResult result = results[i];
+
+                    if (result.Succeeded)
+                    {
                         message.ProcessedOnUtc = dateTime.UtcNow;
                         message.Error = null;
                         published++;
@@ -142,12 +155,12 @@ namespace CleanArchitecture.Infrastructure.BackgroundServices
                             "Published outbox message {outbox_id} (type {event_type})",
                             message.Id, message.Type);
                     }
-                    catch (Exception ex) when (!(ex is OperationCanceledException && cancellationToken.IsCancellationRequested))
+                    else
                     {
                         // Leave ProcessedOnUtc null so this row is retried next tick; one bad
                         // message must not block the rest of the batch.
                         message.Attempts++;
-                        message.Error = ex.Message;
+                        message.Error = result.Error;
 
                         if (message.Attempts >= _maxRetries)
                         {
@@ -156,15 +169,15 @@ namespace CleanArchitecture.Infrastructure.BackgroundServices
                             // these out, but the row stays in the table (with its Error + Attempts)
                             // as a dead-letter record for inspection / manual replay.
                             message.DeadLetteredOnUtc = dateTime.UtcNow;
-                            _logger.LogError(ex,
-                                "Dead-lettered outbox message {outbox_id} (type {event_type}) after {attempts} failed attempts",
-                                message.Id, message.Type, message.Attempts);
+                            _logger.LogError(
+                                "Dead-lettered outbox message {outbox_id} (type {event_type}) after {attempts} failed attempts: {error}",
+                                message.Id, message.Type, message.Attempts, message.Error);
                         }
                         else
                         {
-                            _logger.LogError(ex,
-                                "Failed to publish outbox message {outbox_id} (type {event_type}); attempt {attempts} of {max_attempts}, will retry",
-                                message.Id, message.Type, message.Attempts, _maxRetries);
+                            _logger.LogError(
+                                "Failed to publish outbox message {outbox_id} (type {event_type}); attempt {attempts} of {max_attempts}, will retry: {error}",
+                                message.Id, message.Type, message.Attempts, _maxRetries, message.Error);
                         }
                     }
                 }

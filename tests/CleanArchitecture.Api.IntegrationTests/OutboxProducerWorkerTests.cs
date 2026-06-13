@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using CleanArchitecture.Application.Common.Interfaces;
@@ -104,6 +105,44 @@ namespace CleanArchitecture.Api.IntegrationTests
                 _entered.TrySetResult(true);
                 await _release.Task;
                 Published.Add((eventType, key, payload));
+            }
+        }
+
+        // Overrides the batch path directly (instead of relying on the PublishAsync default fallback)
+        // and fails exactly one message — the one at _failIndex — returning a mixed result list. Proves
+        // the worker maps a partially-failed IReadOnlyList<PublishResult> back to per-row outcomes:
+        // good rows processed, the failed row left unprocessed with its error recorded.
+        private sealed class IndexedBatchPublisher : IEventPublisher
+        {
+            private readonly int _failIndex;
+
+            public IndexedBatchPublisher(int failIndex)
+            {
+                _failIndex = failIndex;
+            }
+
+            public int SuccessCount { get; private set; }
+
+            public Task PublishAsync(string eventType, string key, string payload, string idempotencyKey, CancellationToken cancellationToken) =>
+                Task.CompletedTask;
+
+            public Task<IReadOnlyList<PublishResult>> PublishBatchAsync(IReadOnlyList<EventEnvelope> messages, CancellationToken cancellationToken)
+            {
+                var results = new PublishResult[messages.Count];
+                for (var i = 0; i < messages.Count; i++)
+                {
+                    if (i == _failIndex)
+                    {
+                        results[i] = PublishResult.Failed("simulated partial batch failure");
+                    }
+                    else
+                    {
+                        SuccessCount++;
+                        results[i] = PublishResult.Success();
+                    }
+                }
+
+                return Task.FromResult<IReadOnlyList<PublishResult>>(results);
             }
         }
 
@@ -385,6 +424,36 @@ namespace CleanArchitecture.Api.IntegrationTests
             Assert.Contains(logger.Entries, e => e.Level == LogLevel.Information && e.Message.Contains("started"));
             Assert.Contains(logger.Entries, e => e.Level == LogLevel.Information && e.Message.Contains("stopping"));
             Assert.Contains(logger.Entries, e => e.Level == LogLevel.Information && e.Message.Contains("stopped"));
+        }
+
+        [Fact]
+        public async Task ProduceBatchAsync_PartialBatchFailure_ProcessesGoodRowsAndLeavesTheFailedOneForRetry()
+        {
+            // Two pending rows published in one pipelined batch; the publisher fails exactly one of
+            // them. The good row must be marked processed and the failed row left unprocessed with its
+            // error + a bumped attempt count, but not dead-lettered (below the cap).
+            var publisher = new IndexedBatchPublisher(failIndex: 1);
+            using var provider = BuildProvider(publisher, new FixedDateTime());
+            await SeedOrderAsync(provider);
+            await SeedOrderAsync(provider);
+
+            var published = await NewWorker(provider).ProduceBatchAsync(CancellationToken.None);
+
+            Assert.Equal(1, published);
+            Assert.Equal(1, publisher.SuccessCount);
+
+            var rows = await ReadOutboxAsync(provider);
+            Assert.Equal(2, rows.Count);
+
+            var processed = rows.Where(r => r.ProcessedOnUtc != null).ToList();
+            Assert.Single(processed);
+            Assert.Null(processed[0].Error);
+
+            var pending = rows.Where(r => r.ProcessedOnUtc == null).ToList();
+            Assert.Single(pending);
+            Assert.Equal(1, pending[0].Attempts);
+            Assert.Equal("simulated partial batch failure", pending[0].Error);
+            Assert.Null(pending[0].DeadLetteredOnUtc);
         }
     }
 }

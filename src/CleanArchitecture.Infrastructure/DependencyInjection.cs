@@ -181,15 +181,19 @@ namespace CleanArchitecture.Infrastructure
             // Outbox poll cadence / batch size / retry cap (Outbox:PollInterval, Outbox:BatchSize,
             // Outbox:MaxRetries), parsed with the indexer + TryParse to avoid the Configuration.Binder
             // package (same approach as Maintenance:Enabled / Idempotency:KeyLifetime). Absent/invalid
-            // values fall back to 5s / 100 / 5. MaxRetries caps publish attempts: once a row has failed
+            // values fall back to 1s / 500 / 5 — a throughput-oriented baseline (≈500 events/sec) now
+            // that the worker publishes each batch in one pipelined call. The drain ceiling is
+            // BatchSize / PollInterval, so e.g. Outbox:BatchSize=1000 + Outbox:PollInterval=00:00:00.333
+            // (or BatchSize=3000 at the 1s default) clears the 3000 events/sec target; see
+            // docs/kafka-event-publishing.md. MaxRetries caps publish attempts: once a row has failed
             // that many times the worker dead-letters it instead of retrying forever.
             var pollInterval = TimeSpan.TryParse(configuration["Outbox:PollInterval"], out var parsedPoll)
                 && parsedPoll > TimeSpan.Zero
                     ? parsedPoll
-                    : TimeSpan.FromSeconds(5);
+                    : TimeSpan.FromSeconds(1);
             var batchSize = int.TryParse(configuration["Outbox:BatchSize"], out var parsedBatch) && parsedBatch > 0
                 ? parsedBatch
-                : 100;
+                : 500;
             var maxRetries = int.TryParse(configuration["Outbox:MaxRetries"], out var parsedMax) && parsedMax > 0
                 ? parsedMax
                 : 5;
