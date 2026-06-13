@@ -23,3 +23,6 @@ appsettings.*.Local.json
 
 # Claude Code worktrees (managed by harness — never commit)
 .claude/worktrees/
+
+# BenchmarkDotNet generated reports/logs (machine-specific, regenerated per run)
+BenchmarkDotNet.Artifacts/
