@@ -1,8 +1,7 @@
 using System.Threading;
 using System.Threading.Tasks;
-using CleanArchitecture.Application.Common.Exceptions;
+using CleanArchitecture.Application.Common.Extensions;
 using CleanArchitecture.Application.Common.Interfaces;
-using CleanArchitecture.Domain.Entities;
 using CleanArchitecture.Application.Common.Messaging;
 
 namespace CleanArchitecture.Application.Products.Commands.DeleteProduct
@@ -18,9 +17,7 @@ namespace CleanArchitecture.Application.Products.Commands.DeleteProduct
 
         public async Task Handle(DeleteProductCommand request, CancellationToken cancellationToken)
         {
-            var product = await _context.Products.FindAsync(new object[] { request.Id }, cancellationToken);
-            if (product is null)
-                throw new NotFoundException(nameof(Product), request.Id);
+            var product = await _context.Products.FindOrThrowAsync(request.Id, cancellationToken);
 
             _context.Products.Remove(product);
             await _context.SaveChangesAsync(cancellationToken);

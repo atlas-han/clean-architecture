@@ -1,9 +1,8 @@
 using System.Threading;
 using System.Threading.Tasks;
-using CleanArchitecture.Application.Common.Exceptions;
+using CleanArchitecture.Application.Common.Extensions;
 using CleanArchitecture.Application.Common.Interfaces;
 using CleanArchitecture.Application.Common.Messaging;
-using CleanArchitecture.Domain.Entities;
 using CleanArchitecture.Domain.ValueObjects;
 
 namespace CleanArchitecture.Application.Products.Commands.UpdateProduct
@@ -19,10 +18,7 @@ namespace CleanArchitecture.Application.Products.Commands.UpdateProduct
 
         public async Task Handle(UpdateProductCommand request, CancellationToken cancellationToken)
         {
-            var product = await _context.Products.FindAsync(new object[] { request.Id }, cancellationToken);
-
-            if (product is null)
-                throw new NotFoundException(nameof(Product), request.Id);
+            var product = await _context.Products.FindOrThrowAsync(request.Id, cancellationToken);
 
             product.Rename(request.Name);
             product.ChangeDescription(request.Description);
