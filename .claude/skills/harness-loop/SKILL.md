@@ -57,7 +57,7 @@ Order matters:
 1. `dotnet build --nologo`
 2. `dotnet test --nologo --verbosity minimal`
 3. If Domain or any `.csproj` changed → delegate to `@clean-arch-guardian`.
-4. Any code change → delegate to `@dotnet-code-reviewer` (this review now includes a **SOLID** pass — a clear SRP/OCP/LSP/ISP/intra-layer-DIP violation surfaces as a `high` finding → `REQUEST_CHANGES`, so SOLID gates the merge just like arch).
+4. Any code change → delegate to `@dotnet-code-reviewer` (this review now includes a **SOLID** pass — a clear SRP/OCP/LSP/ISP/intra-layer-DIP violation surfaces as a `high` finding → `REQUEST_CHANGES`, so SOLID gates the merge just like arch — and a **YAGNI** pass — a clear single-use abstraction / unread surface / unrequested flexibility / impossible-state defensive code is likewise `high` and gates the merge, while mandated structure like `IApplicationDbContext` and the CQRS slice contract is carved out).
 
 Compute the verdict:
 

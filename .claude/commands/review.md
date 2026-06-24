@@ -20,5 +20,6 @@ The reviewer checks:
 7. Tests (`TestDbContextFactory.Create()`, no mocking libs, integration via `WebApplicationFactory<Program>`).
 8. Composition root (DI registrations in the right `DependencyInjection.cs` file; `public partial class Program {}` intact).
 9. SOLID principles (SRP/OCP/LSP/ISP + intra-layer DIP — design-level smells the layer guards can't see; clear violations are `high` and gate the merge). Cross-layer DIP stays with `@clean-arch-guardian`.
+10. YAGNI (no speculative abstraction / single-use indirection / unread config / unrequested flexibility / impossible-state defensive code; clear violations are `high` and gate the merge). Mandated structure — `IApplicationDbContext`, `IRequest`/`IRequestHandler`, the CQRS slice contract, per-Command Validator — is carved out and never flagged.
 
 Output verdict: `APPROVE` / `COMMENT` / `REQUEST_CHANGES` with prioritized findings (critical→low), each with file:line and a concrete suggestion.

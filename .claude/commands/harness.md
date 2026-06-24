@@ -55,7 +55,7 @@ dotnet test --nologo --verbosity minimal
 Then layered checks (only if the corresponding layer was touched):
 
 - Domain or any `.csproj` modified → delegate to `@clean-arch-guardian`.
-- Any code change → delegate to `@dotnet-code-reviewer` for diff review (includes a **SOLID** pass; a clear SRP/OCP/LSP/ISP/intra-layer-DIP violation is a `high` finding → `REQUEST_CHANGES`, gating the merge).
+- Any code change → delegate to `@dotnet-code-reviewer` for diff review (includes a **SOLID** pass; a clear SRP/OCP/LSP/ISP/intra-layer-DIP violation is a `high` finding → `REQUEST_CHANGES`, gating the merge — plus a **YAGNI** pass; a clear single-use abstraction / unread surface / unrequested flexibility is likewise `high`, with mandated structure like `IApplicationDbContext` and the CQRS contract carved out).
 
 **Verdict computation:**
 

@@ -61,8 +61,8 @@ If Domain or any csproj changed, also delegate to `clean-arch-guardian` for a la
 
 ### Phase 5 — Review + Merge (only on green, **linear / fast-forward only**)
 
-1. Delegate to `dotnet-code-reviewer` against the worktree branch's diff (its review includes a **SOLID** pass — a clear SRP/OCP/LSP/ISP/intra-layer-DIP violation is a `high` finding → `REQUEST_CHANGES`, gating the merge).
-2. If review verdict is `APPROVE` or `COMMENT`: **review `README.md` against the diff first** — update it if the change touches an API endpoint, an `appsettings.json` key, a user-facing behavior/mode, or the directory tree (else note "README 변경 불필요"); also confirm the Phase-0 PRD/ADR matches the shipped shape and bump its status. Then stage + commit any uncommitted changes with a clear message, and perform a **linear merge** — never a merge commit:
+1. Delegate to `dotnet-code-reviewer` against the worktree branch's diff (its review includes a **SOLID** pass — a clear SRP/OCP/LSP/ISP/intra-layer-DIP violation is a `high` finding → `REQUEST_CHANGES`, gating the merge — and a **YAGNI** pass — a clear single-use abstraction / unread surface / unrequested flexibility is likewise `high`, with mandated structure like `IApplicationDbContext` and the CQRS contract carved out).
+2. If review verdict is `APPROVE` or `COMMENT`: stage + commit any uncommitted changes with a clear message, then perform a **linear merge** — never a merge commit:
    ```bash
    # inside the worktree, after committing:
    git rebase main                  # linearize on top of current main; --abort on conflicts and report

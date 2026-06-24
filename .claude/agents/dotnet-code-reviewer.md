@@ -73,6 +73,20 @@ Review every new/changed class against the five principles. Cross-layer DIP (the
 
 **Calibration (so the gate stays trustworthy):** only a *concrete, demonstrable* violation rises to `critical` / `high` (→ `REQUEST_CHANGES`, blocks merge). Ambiguous "could be cleaner" smells are `low` / `medium` (→ `COMMENT`, non-gating). When unsure whether a design choice is a real violation, prefer `low` and explain the tradeoff rather than blocking. Never invent a violation just to have something to say.
 
+### 10. YAGNI — "You Aren't Gonna Need It" (merge gate — clear violations are `high`)
+
+The project root `CLAUDE.md` makes simplicity a *hard rule*, not a preference: "No abstractions for single-use code", "No 'flexibility' or 'configurability' that wasn't requested", "No error handling for impossible scenarios", "Minimum code that solves the problem. Nothing speculative." This dimension enforces that. Flag code that pays for a future the diff does not demonstrably need:
+
+- **Speculative abstraction** — an interface, generic type parameter, base class, or strategy/factory introduced with **exactly one** concrete use and no second caller in the diff → `high`. Watch especially for an interface added "so it can be mocked": this project bans mocking libraries and tests through `TestDbContextFactory` / `TestDoubles`, so a fresh single-implementer interface is almost never justified.
+- **Dead / unread surface** — a config option, `Options` field, constructor parameter, DTO property, public method, or `IApplicationDbContext` `DbSet` that nothing in the diff (or codebase) reads → `high`. Genuinely unreachable.
+- **Premature flexibility** — a "configurable" knob, hook point, or extension seam nobody asked for, plus the machinery to support it (caching, batching, retries, generic pipelines) with no demonstrated need → `medium` (`high` if it also adds unread surface).
+- **Defensive code for impossible states** — null checks / catches / fallbacks for inputs the type system or an upstream guard already rules out → `medium`.
+- **Unrequested scope** — a CQRS slice, endpoint, or entity field the task didn't ask for and nothing consumes → `high`.
+
+**Carve-out — do NOT flag mandated structure as YAGNI.** The architecture's *required* seams are not speculation, even when a feature uses them once: `IApplicationDbContext`, `IRequest<T>` / `IRequestHandler<,>` / `IPipelineBehavior<,>`, `IDateTime`, the per-Command `Validator`, the full CQRS slice contract, and `BaseEntity`. These are the project's enforced conventions (and several are load-bearing for the layer boundaries and tests) — never tell the author to inline or delete them in the name of YAGNI. YAGNI targets abstraction the author *added on top of* the mandated structure, not the structure itself.
+
+**Calibration (same discipline as §9):** `high` requires a *demonstrable* "not needed" — zero current readers / a single call site / the only consumer is the abstraction's own test. The classic false positive is "but they might need it later": that argument is exactly what YAGNI rejects, so do not let it downgrade a real finding — but symmetrically, if the abstraction already has ≥2 real uses or is mandated structure, it is *needed* and is not a finding. When a simplification is a genuine judgment call, prefer `low`/`medium` (`COMMENT`) and state the tradeoff rather than blocking.
+
 ## Output format
 
 ```
@@ -81,7 +95,7 @@ summary: <one sentence overall impression>
 findings:
   - severity: critical | high | medium | low
     file: <path>:<line>
-    category: <layer|cqrs|csharp9|domain|validator|exception|test|composition|solid>
+    category: <layer|cqrs|csharp9|domain|validator|exception|test|composition|solid|yagni>
     issue: <what is wrong>
     suggestion: <concrete fix>
 praise:  # short, only mention non-obvious good calls
