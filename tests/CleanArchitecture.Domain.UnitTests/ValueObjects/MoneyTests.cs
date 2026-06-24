@@ -60,12 +60,6 @@ namespace CleanArchitecture.Domain.UnitTests.ValueObjects
         }
 
         [Fact]
-        public void Multiplication_IntTimesMoney_IsCommutative()
-        {
-            Assert.Equal(new Money(12.5m) * 4, 4 * new Money(12.5m));
-        }
-
-        [Fact]
         public void Multiplication_ByZero_YieldsZero()
         {
             Assert.Equal(Money.Zero, new Money(99m) * 0);

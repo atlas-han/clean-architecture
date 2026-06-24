@@ -104,13 +104,6 @@ if (app.Environment.IsDevelopment() || app.Environment.IsEnvironment("Local"))
     app.UseDeveloperExceptionPage();
 }
 
-// app.UseSwagger();
-// app.UseSwaggerUI(c =>
-// {
-//     c.SwaggerEndpoint("/swagger/v1/swagger.json", "CleanArchitecture v1");
-//     c.RoutePrefix = string.Empty;
-// });
-
 if (!app.Environment.IsDevelopment() && !app.Environment.IsEnvironment("Local"))
 {
     // HSTS is only meaningful over HTTPS; excluded in dev/Local so local HTTP isn't pinned. (§9.1)

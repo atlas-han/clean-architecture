@@ -20,8 +20,5 @@ namespace CleanArchitecture.Domain.ValueObjects
 
         public static Money operator *(Money money, int multiplier) =>
             new Money(money.Amount * multiplier);
-
-        public static Money operator *(int multiplier, Money money) =>
-            money * multiplier;
     }
 }
