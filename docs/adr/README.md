@@ -13,3 +13,4 @@
 | # | 제목 | 상태 | 날짜 |
 |---|------|------|------|
 | [0001](0001-adopt-documentation-first-harness.md) | 하네스에 문서화 우선(PRD/ADR) 워크플로 도입 | Accepted | 2026-06-13 |
+| [0002](0002-design-principle-audit-refactor-roadmap.md) | 설계 원칙 감사 결과와 리팩토링 로드맵 | Proposed | 2026-06-24 |
