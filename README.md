@@ -289,15 +289,13 @@ curl -i http://localhost:5000/api/v1/products \
   -H "X-Request-Deadline: 1000000000000"
 ```
 
-### 수신 측 처리 (3단계)
+### 수신 측 처리 (2단계)
 
-미들웨어는 진입 fast-fail 에서 끝나지 않고, 살아있는 deadline 을 비즈니스 로직 끝단까지 흘려보냅니다 (가이드 §7.4 1~3단계):
+미들웨어는 진입 fast-fail 에서 끝나지 않고, 살아있는 deadline 을 비즈니스 로직 끝단까지 흘려보냅니다 (가이드 §7.4):
 
 1. **진입 fast-fail** — 위 표(잔여 `< 50ms` → 504).
 2. **비즈니스 로직 · DB 취소** — 살아있는 deadline 으로 `RequestAborted` 에 링크된 `CancellationToken`(`CancelAfter(remaining)`)을 만들어 `HttpContext.GetRequestCancellationToken()` (컨트롤러는 `ApiControllerBase.DeadlineToken`) 으로 노출합니다. 이를 `ISender.Send` 에 넘기면 핸들러 → EF Core 쿼리/`SaveChanges` 까지 전파되어, 예산이 소진되면 실행 중인 작업이 취소됩니다. 발생한 `OperationCanceledException` 은 `ApiExceptionFilter` 가 **504 `DEADLINE_EXCEEDED`** 로 매핑합니다 — 단, 진짜 클라이언트 disconnect(=`RequestAborted` 동반 취소)는 제외합니다.
-3. **다운스트림 재전파** — `Api/Http/DeadlinePropagationHandler.cs`(`DelegatingHandler`)를 `AddHttpClient(...).AddHttpMessageHandler<DeadlinePropagationHandler>()` 로 붙이면, 받은 **절대** `X-Request-Deadline` 를 아웃바운드 HTTP 요청에 그대로 실어 전파합니다(§4.4 `traceparent` 자동 주입과 동일 패턴). 절대 시각이므로 하위 서비스가 같은 예산으로 자신의 1단계를 수행합니다. 이미 헤더가 있으면 덮어쓰지 않습니다(`AddHttpContextAccessor` + 핸들러는 `Program.cs` 에 등록됨).
-
-> 이 패턴은 서버 간 **NTP 시계 동기화**와 최소 네트워크 마진(50ms)을 전제합니다 (가이드 §7.4 주의사항).
+> 가이드 §7.4 의 3단계(**다운스트림 재전파**)는 이 샘플에 아웃바운드 HTTP 호출이 없어 **미구현**입니다. 선구현돼 있던 `DeadlinePropagationHandler`(`DelegatingHandler`)는 ADR-0002 Wave 2 에서 제거했고, 다운스트림 호출이 생기면 받은 **절대** `X-Request-Deadline` 를 `AddHttpClient(...).AddHttpMessageHandler<>()` 패턴(§4.4 `traceparent` 자동 주입과 동일, 서버 간 **NTP 시계 동기화** + 최소 네트워크 마진 50ms 전제)으로 다시 붙이면 됩니다.
 
 ## 멱등성 (Idempotency-Key)
 
@@ -542,7 +540,6 @@ clean-architecture/
 │       ├── Common/{ApiResult, ErrorCodes, HttpContextExtensions}.cs  ·  Common/Responses/ApiResponses.cs
 │       ├── Controllers/{ApiControllerBase, ProductsController, OrdersController, MaintenanceController}.cs
 │       ├── Filters/ApiExceptionFilter.cs
-│       ├── Http/DeadlinePropagationHandler.cs
 │       ├── Idempotency/{IdempotentAttribute, IdempotencyFilter}.cs
 │       ├── Logging/{JsonConsoleFormatter, HeaderMasker, PiiMasker}.cs
 │       └── Middleware/{SecurityHeaders, RequestLogging, Maintenance, DeadlinePropagation}Middleware.cs
@@ -558,7 +555,7 @@ clean-architecture/
     └── CleanArchitecture.Api.IntegrationTests/
         ├── {Products, Orders}ControllerTests.cs
         ├── {Idempotency, Maintenance, HealthCheck, SecurityHeaders, GracefulShutdown, ProductConcurrency}Tests.cs
-        ├── {DeadlinePropagationMiddleware, DeadlinePropagationHandler, RequestLoggingMiddleware}Tests.cs
+        ├── {DeadlinePropagationMiddleware, RequestLoggingMiddleware}Tests.cs
         ├── {JsonConsoleFormatter, PiiMasker, HeaderMasker}Tests.cs
         ├── {ApiErrorResponse, DistributedCacheIdempotencyStore, InfrastructureDependencyInjection}Tests.cs
         └── Infrastructure/{CapturingLoggerProvider, ErrorResponseTestFactory, LoggingTestFactory, ThrowingTestController}.cs

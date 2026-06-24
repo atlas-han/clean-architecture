@@ -16,7 +16,7 @@ namespace CleanArchitecture.Api.Middleware
     //   - Live budget (step 2): bound the request to the remaining time with a CancellationToken
     //     (HttpContext.GetRequestCancellationToken()) that handlers/EF Core observe, so in-flight
     //     work is cancelled when the deadline elapses. The deadline itself is stashed in
-    //     HttpContext.Items[DeadlineItemKey] so the downstream handler (step 3) can re-propagate it.
+    //     HttpContext.Items[DeadlineItemKey] so downstream consumers/diagnostics can read it.
     // The header is optional: requests without it pass through untouched.
     public class DeadlinePropagationMiddleware
     {
